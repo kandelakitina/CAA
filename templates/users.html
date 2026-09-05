@@ -25,8 +25,9 @@
     <section class="card dashboard-card">
       <p class="eyebrow">Администрирование</p>
       <h1>Пользователи</h1>
-      <p class="lead">Создайте учётную запись, передайте человеку временный пароль отдельным безопасным каналом. При первом входе система потребует заменить его.</p>
+      <p class="lead">Администратор задаёт временный пароль и передаёт его пользователю безопасным каналом. При первом входе пользователь обязан установить собственный пароль.</p>
       {{ if .Error }}<div class="alert">{{ .Error }}</div>{{ end }}
+      {{ if .Success }}<div class="success-note users-note">{{ .Success }}</div>{{ end }}
 
       <details class="upload-panel" {{ if .Error }}open{{ end }}>
         <summary>Добавить пользователя</summary>
@@ -49,8 +50,12 @@
             </select>
           </label>
           <label>
-            Временный пароль — не менее 12 символов
-            <input type="password" name="temporary_password" minlength="12" required autocomplete="new-password">
+            Временный пароль — не менее 8 символов
+            <input type="password" name="temporary_password" minlength="8" required autocomplete="new-password">
+          </label>
+          <label>
+            Повторите временный пароль
+            <input type="password" name="password_confirmation" minlength="8" required autocomplete="new-password">
           </label>
           <button type="submit">Создать пользователя</button>
         </form>
@@ -67,9 +72,29 @@
           <div class="user-flags">
             <span class="status-pill">{{ .RoleLabel }}</span>
             {{ if .MustChangePassword }}<span class="temporary-pill">Временный пароль</span>{{ end }}
-            {{ if not .Active }}<span class="inactive-pill">Отключён</span>{{ end }}
+            {{ if not .Active }}<span class="inactive-pill">Удалён</span>{{ end }}
           </div>
           <span class="created-label">с {{ .CreatedLabel }}</span>
+          {{ if and .Active (not .IsCurrent) }}
+          <details class="reset-panel" {{ if eq $.ResetUserID .ID }}open{{ end }}>
+            <summary>Сбросить пароль</summary>
+            <form class="form-stack reset-form" method="post" action="/admin/users/{{ .ID }}/reset-password">
+              <p class="form-hint">Пользователь будет выведен со всех устройств и при следующем входе должен будет заменить этот пароль.</p>
+              <label>
+                Новый временный пароль
+                <input type="password" name="temporary_password" minlength="8" required autocomplete="new-password">
+              </label>
+              <label>
+                Повторите временный пароль
+                <input type="password" name="password_confirmation" minlength="8" required autocomplete="new-password">
+              </label>
+              <button type="submit">Подтвердить сброс</button>
+            </form>
+          </details>
+          <form class="delete-user-form" method="post" action="/admin/users/{{ .ID }}/delete" onsubmit="return confirm('Удалить пользователя {{ .FullName }}? Вход будет немедленно отключён.');">
+            <button type="submit" class="danger-link">Удалить пользователя</button>
+          </form>
+          {{ end }}
         </article>
         {{ end }}
       </div>

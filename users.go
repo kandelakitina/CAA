@@ -3,6 +3,8 @@ package main
 import (
 	"errors"
 	"net/http"
+	"net/mail"
+	"strconv"
 	"strings"
 	"time"
 
@@ -17,6 +19,7 @@ type userListItem struct {
 	RoleLabel          string
 	Active             bool
 	MustChangePassword bool
+	IsCurrent          bool
 	CreatedLabel       string
 }
 
@@ -35,6 +38,7 @@ func (app *application) requireRole(allowed ...string) gin.HandlerFunc {
 }
 
 func (app *application) listUsers(c *gin.Context) ([]userListItem, error) {
+	currentUser := c.MustGet("user").(user)
 	rows, err := app.db.Query(c.Request.Context(), `
 		SELECT id, email, full_name, role, active, must_change_password, created_at
 		FROM users
@@ -57,6 +61,7 @@ func (app *application) listUsers(c *gin.Context) ([]userListItem, error) {
 			return nil, err
 		}
 		item.RoleLabel = roleLabel(role)
+		item.IsCurrent = item.ID == currentUser.ID
 		item.CreatedLabel = created.Format("02.01.2006")
 		users = append(users, item)
 	}
@@ -75,6 +80,15 @@ func (app *application) renderUsers(c *gin.Context, status int, message string, 
 	if _, exists := values["SelectedRole"]; !exists {
 		values["SelectedRole"] = "committee"
 	}
+	if _, exists := values["ResetUserID"]; !exists {
+		values["ResetUserID"] = int64(0)
+	}
+	if _, exists := values["Success"]; !exists && c.Query("password_reset") == "1" {
+		values["Success"] = "Пароль сброшен. Передайте пользователю временный пароль безопасным каналом."
+	}
+	if _, exists := values["Success"]; !exists && c.Query("user_deleted") == "1" {
+		values["Success"] = "Пользователь удалён: вход отключён, действующие сессии завершены."
+	}
 	values["Title"] = "Пользователи"
 	values["User"] = c.MustGet("user").(user)
 	values["Users"] = users
@@ -91,9 +105,11 @@ func (app *application) createUser(c *gin.Context) {
 	fullName := strings.TrimSpace(c.PostForm("full_name"))
 	role := c.PostForm("role")
 	password := c.PostForm("temporary_password")
+	confirmation := c.PostForm("password_confirmation")
 	values := gin.H{"Email": email, "FullName": fullName, "SelectedRole": role}
 
-	if email == "" || len(email) > 320 || !strings.Contains(email, "@") {
+	parsedAddress, emailError := mail.ParseAddress(email)
+	if email == "" || len(email) > 320 || emailError != nil || strings.ToLower(parsedAddress.Address) != email {
 		app.renderUsers(c, http.StatusUnprocessableEntity, "Укажите корректный адрес электронной почты", values)
 		return
 	}
@@ -105,11 +121,14 @@ func (app *application) createUser(c *gin.Context) {
 		app.renderUsers(c, http.StatusUnprocessableEntity, "Выберите допустимую роль", values)
 		return
 	}
-	if len(password) < 12 {
-		app.renderUsers(c, http.StatusUnprocessableEntity, "Временный пароль должен содержать не менее 12 символов", values)
+	if len(password) < minimumPasswordLength {
+		app.renderUsers(c, http.StatusUnprocessableEntity, "Временный пароль должен содержать не менее 8 символов", values)
 		return
 	}
-
+	if password != confirmation {
+		app.renderUsers(c, http.StatusUnprocessableEntity, "Подтверждение не совпадает с временным паролем", values)
+		return
+	}
 	passwordHash, err := hashPassword(password)
 	if err != nil {
 		c.String(http.StatusInternalServerError, "Не удалось обработать пароль")
@@ -129,6 +148,118 @@ func (app *application) createUser(c *gin.Context) {
 		return
 	}
 	c.Redirect(http.StatusSeeOther, "/admin/users")
+}
+
+func (app *application) resetUserPassword(c *gin.Context) {
+	currentUser := c.MustGet("user").(user)
+	userID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || userID < 1 {
+		c.String(http.StatusBadRequest, "Некорректный идентификатор пользователя")
+		return
+	}
+	values := gin.H{"ResetUserID": userID}
+	if userID == currentUser.ID {
+		app.renderUsers(c, http.StatusUnprocessableEntity, "Собственный пароль изменяется через раздел «Пароль»", values)
+		return
+	}
+	password := c.PostForm("temporary_password")
+	confirmation := c.PostForm("password_confirmation")
+	if len(password) < minimumPasswordLength {
+		app.renderUsers(c, http.StatusUnprocessableEntity, "Временный пароль должен содержать не менее 8 символов", values)
+		return
+	}
+	if password != confirmation {
+		app.renderUsers(c, http.StatusUnprocessableEntity, "Подтверждение не совпадает с временным паролем", values)
+		return
+	}
+	passwordHash, err := hashPassword(password)
+	if err != nil {
+		c.String(http.StatusInternalServerError, "Не удалось обработать временный пароль")
+		return
+	}
+	tx, err := app.db.Begin(c.Request.Context())
+	if err != nil {
+		c.String(http.StatusInternalServerError, "Не удалось начать сброс пароля")
+		return
+	}
+	defer tx.Rollback(c.Request.Context())
+	command, err := tx.Exec(c.Request.Context(), `
+		UPDATE users
+		SET password_hash = $2, must_change_password = TRUE
+		WHERE id = $1 AND active = TRUE
+	`, userID, passwordHash)
+	if err != nil {
+		c.String(http.StatusInternalServerError, "Не удалось обновить пароль пользователя")
+		return
+	}
+	if command.RowsAffected() != 1 {
+		app.renderUsers(c, http.StatusNotFound, "Активный пользователь не найден", values)
+		return
+	}
+	if _, err := tx.Exec(c.Request.Context(), `DELETE FROM sessions WHERE user_id = $1`, userID); err != nil {
+		c.String(http.StatusInternalServerError, "Не удалось завершить действующие сессии пользователя")
+		return
+	}
+	if err := tx.Commit(c.Request.Context()); err != nil {
+		c.String(http.StatusInternalServerError, "Не удалось сохранить временный пароль")
+		return
+	}
+	c.Redirect(http.StatusSeeOther, "/admin/users?password_reset=1")
+}
+
+func (app *application) deleteUser(c *gin.Context) {
+	currentUser := c.MustGet("user").(user)
+	userID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || userID < 1 {
+		c.String(http.StatusBadRequest, "Некорректный идентификатор пользователя")
+		return
+	}
+	if userID == currentUser.ID {
+		app.renderUsers(c, http.StatusUnprocessableEntity, "Нельзя удалить собственную учётную запись администратора", nil)
+		return
+	}
+	tx, err := app.db.Begin(c.Request.Context())
+	if err != nil {
+		c.String(http.StatusInternalServerError, "Не удалось начать удаление пользователя")
+		return
+	}
+	defer tx.Rollback(c.Request.Context())
+
+	var pendingApprovals int
+	err = tx.QueryRow(c.Request.Context(), `
+		SELECT COUNT(*)
+		FROM approval_participants p
+		JOIN approval_rounds r ON r.id = p.round_id
+		WHERE p.user_id = $1 AND r.status = 'active' AND p.decision IS NULL
+	`, userID).Scan(&pendingApprovals)
+	if err != nil {
+		c.String(http.StatusInternalServerError, "Не удалось проверить активные согласования")
+		return
+	}
+	if pendingApprovals > 0 {
+		app.renderUsers(c, http.StatusConflict, "Пользователя нельзя удалить: от него ожидается решение в активном согласовании", nil)
+		return
+	}
+	command, err := tx.Exec(c.Request.Context(), `
+		UPDATE users SET active = FALSE WHERE id = $1 AND active = TRUE
+	`, userID)
+	if err != nil {
+		c.String(http.StatusInternalServerError, "Не удалось удалить пользователя")
+		return
+	}
+	if command.RowsAffected() != 1 {
+		app.renderUsers(c, http.StatusNotFound, "Активный пользователь не найден", nil)
+		return
+	}
+	if _, err := tx.Exec(c.Request.Context(), `DELETE FROM sessions WHERE user_id = $1`, userID); err != nil {
+		c.String(http.StatusInternalServerError, "Не удалось завершить сессии пользователя")
+		return
+	}
+	if err := tx.Commit(c.Request.Context()); err != nil {
+		c.String(http.StatusInternalServerError, "Не удалось завершить удаление пользователя")
+		return
+	}
+	c.Redirect(http.StatusSeeOther, "/admin/users?user_deleted=1")
 }
 
 func (app *application) showChangePassword(c *gin.Context) {
@@ -163,8 +294,8 @@ func (app *application) changePassword(c *gin.Context) {
 		renderError(http.StatusUnauthorized, "Текущий пароль указан неверно")
 		return
 	}
-	if len(newPassword) < 12 {
-		renderError(http.StatusUnprocessableEntity, "Новый пароль должен содержать не менее 12 символов")
+	if len(newPassword) < minimumPasswordLength {
+		renderError(http.StatusUnprocessableEntity, "Новый пароль должен содержать не менее 8 символов")
 		return
 	}
 	if newPassword != confirmation {

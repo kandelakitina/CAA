@@ -26,6 +26,7 @@ import (
 
 const (
 	passwordIterations = 210_000
+	minimumPasswordLength = 8
 	sessionLifetime     = 12 * time.Hour
 )
 
@@ -86,6 +87,8 @@ func main() {
 	router.POST("/password/change", app.requireUser(), app.changePassword)
 	router.GET("/admin/users", app.requireUser(), app.requireRole("admin"), app.showUsers)
 	router.POST("/admin/users", app.requireUser(), app.requireRole("admin"), app.createUser)
+	router.POST("/admin/users/:id/reset-password", app.requireUser(), app.requireRole("admin"), app.resetUserPassword)
+	router.POST("/admin/users/:id/delete", app.requireUser(), app.requireRole("admin"), app.deleteUser)
 	router.GET("/", app.requireUser(), app.dashboard)
 	router.GET("/storage/check", app.requireUser(), app.checkStorage)
 	router.POST("/documents", app.requireUser(), app.createDocument)
@@ -218,8 +221,8 @@ func (app *application) createInitialAdmin(ctx context.Context) error {
 	if email == "" || password == "" {
 		return errors.New("database has no users: set INITIAL_ADMIN_EMAIL and INITIAL_ADMIN_PASSWORD")
 	}
-	if len(password) < 12 {
-		return errors.New("INITIAL_ADMIN_PASSWORD must contain at least 12 characters")
+	if len(password) < minimumPasswordLength {
+		return errors.New("INITIAL_ADMIN_PASSWORD must contain at least 8 characters")
 	}
 	if name == "" {
 		name = "Администратор"
@@ -265,7 +268,7 @@ func (app *application) login(c *gin.Context) {
 	var usr user
 	var passwordHash string
 	err := app.db.QueryRow(c.Request.Context(), `
-		SELECT id, email, full_name, role, must_change_password, password_hash
+		SELECT id, email, full_name, role, must_change_password, COALESCE(password_hash, '')
 		FROM users
 		WHERE email = $1 AND active = TRUE
 	`, email).Scan(&usr.ID, &usr.Email, &usr.FullName, &usr.Role, &usr.MustChangePassword, &passwordHash)

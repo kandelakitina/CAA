@@ -91,6 +91,13 @@ button:hover { background: #7890ff; }
 .inactive-pill { background: rgba(248, 113, 113, 0.10); color: #fecaca; }
 .created-label { flex: 0 0 auto; }
 .password-back { margin: 1.5rem 0 0; }
+.users-note { margin-bottom: 1.25rem; }
+.reset-panel { width: 100%; margin-left: 3.75rem; border-top: 1px solid rgba(51, 68, 95, 0.7); }
+.reset-panel summary { padding-top: 0.8rem; color: #9eb0ff; font-size: 0.84rem; font-weight: 700; cursor: pointer; }
+.reset-form { max-width: 30rem; padding-top: 1rem; }
+.delete-user-form { width: 100%; margin: 0.2rem 0 0 3.75rem; }
+.danger-link { padding: 0; background: transparent; color: #f38a98; font-size: 0.82rem; font-weight: 700; }
+.danger-link:hover { background: transparent; color: #fecaca; }
 .approval-section { margin-top: 2rem; padding-top: 0.25rem; border-top: 1px solid #293951; }
 .approval-panel, .round-card, .response-card, .management-card { border: 1px solid #33445f; border-radius: 1rem; background: rgba(12, 22, 39, 0.72); }
 .approval-panel summary { padding: 1rem 1.25rem; color: #dbe5f5; font-weight: 800; cursor: pointer; }
@@ -138,6 +145,8 @@ button:hover { background: #7890ff; }
   .user-row { align-items: flex-start; flex-wrap: wrap; }
   .user-flags { width: calc(100% - 3.75rem); justify-content: flex-start; margin-left: 3.75rem; }
   .created-label { margin-left: 3.75rem; }
+  .reset-panel { margin-left: 0; }
+  .delete-user-form { margin-left: 0; }
   .participant-result { grid-template-columns: 1fr; }
   .decision-block { justify-items: start; }
 }
