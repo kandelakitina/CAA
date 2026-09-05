@@ -83,6 +83,8 @@ func main() {
 	router.POST("/logout", app.requireUser(), app.logout)
 	router.GET("/", app.requireUser(), app.dashboard)
 	router.GET("/storage/check", app.requireUser(), app.checkStorage)
+	router.POST("/documents", app.requireUser(), app.createDocument)
+	router.GET("/documents/:id/download", app.requireUser(), app.downloadCurrentDocument)
 
 	port := os.Getenv("PORT")
 	if port == "" {
@@ -117,6 +119,34 @@ func (app *application) migrate(ctx context.Context) error {
 
 		CREATE INDEX IF NOT EXISTS sessions_user_id_idx ON sessions(user_id);
 		CREATE INDEX IF NOT EXISTS sessions_expires_at_idx ON sessions(expires_at);
+
+		CREATE TABLE IF NOT EXISTS documents (
+			id BIGSERIAL PRIMARY KEY,
+			title TEXT NOT NULL,
+			description TEXT NOT NULL DEFAULT '',
+			status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'in_review', 'approved', 'rejected')),
+			current_version INTEGER NOT NULL DEFAULT 0,
+			created_by BIGINT NOT NULL REFERENCES users(id),
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		);
+
+		CREATE TABLE IF NOT EXISTS document_versions (
+			id BIGSERIAL PRIMARY KEY,
+			document_id BIGINT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+			version_no INTEGER NOT NULL CHECK (version_no > 0),
+			object_key TEXT NOT NULL UNIQUE,
+			s3_version_id TEXT,
+			original_filename TEXT NOT NULL,
+			content_type TEXT NOT NULL,
+			size_bytes BIGINT NOT NULL CHECK (size_bytes > 0),
+			uploaded_by BIGINT NOT NULL REFERENCES users(id),
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			UNIQUE (document_id, version_no)
+		);
+
+		CREATE INDEX IF NOT EXISTS documents_updated_at_idx ON documents(updated_at DESC);
+		CREATE INDEX IF NOT EXISTS document_versions_document_id_idx ON document_versions(document_id, version_no DESC);
 	`
 	_, err := app.db.Exec(ctx, schema)
 	return err
@@ -224,11 +254,7 @@ func (app *application) logout(c *gin.Context) {
 }
 
 func (app *application) dashboard(c *gin.Context) {
-	usr := c.MustGet("user").(user)
-	c.HTML(http.StatusOK, "dashboard.html", gin.H{
-		"Title": "Neva Concert Hall Corporate Approvals",
-		"User":  usr,
-	})
+	app.renderDashboard(c, http.StatusOK, "")
 }
 
 func (app *application) requireUser() gin.HandlerFunc {

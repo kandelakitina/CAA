@@ -1,12 +1,16 @@
 # Neva Concert Hall Corporate Approvals
 
-Go/Gin/HTMX-приложение с PostgreSQL и закрытым входом для Timeweb Cloud App Platform.
+Go/Gin/HTMX-приложение с PostgreSQL, закрытым входом и приватным S3 для Timeweb Cloud App Platform.
+
+Текущая версия позволяет администратору или секретарю создать карточку документа,
+загрузить первую версию `.doc`, `.docx` или `.pdf` размером до 25 МБ и скачать её
+из закрытого реестра. Метаданные и номер версии хранятся в PostgreSQL, файл — в S3.
 
 ## Локальный запуск
 
 ```bash
 go mod download
-go run main.go
+go run .
 ```
 
 Откройте `http://localhost:8080`. Проверка состояния доступна по адресу `/health`.
@@ -25,6 +29,7 @@ go run main.go
 ## Настройки Timeweb
 
 - Тип: Backend → Gin
-- Команда запуска: `go run main.go`
+- Команда сборки: `go build -o app .`
+- Команда запуска: `./app`
 - Путь проверки состояния: `/health`
 - Путь до директории проекта: пустой, если эти файлы находятся в корне репозитория

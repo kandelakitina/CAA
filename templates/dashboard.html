@@ -23,12 +23,59 @@
   <main class="content">
     <section class="card dashboard-card">
       <p class="eyebrow">Закрытый кабинет</p>
-      <h1>Добро пожаловать</h1>
-      <p class="lead">Подключение к PostgreSQL и авторизация работают. Следующий модуль — реестр документов и их редакций.</p>
+      <h1>Документы</h1>
+      <p class="lead">Закрытый реестр материалов Комитета. Сейчас доступна загрузка и скачивание первой версии документа.</p>
+
+      {{ if .Error }}<div class="alert">{{ .Error }}</div>{{ end }}
+
+      {{ if or (eq .User.Role "admin") (eq .User.Role "secretary") }}
+      <details class="upload-panel">
+        <summary>Добавить документ</summary>
+        <form class="form-stack upload-form" method="post" action="/documents" enctype="multipart/form-data">
+          <label>
+            Название документа
+            <input name="title" maxlength="250" required placeholder="Например: Проект договора с архитектором">
+          </label>
+          <label>
+            Краткое описание
+            <textarea name="description" rows="3" placeholder="Что требуется рассмотреть"></textarea>
+          </label>
+          <label>
+            Файл, не более 25 МБ
+            <input type="file" name="file" accept=".doc,.docx,.pdf" required>
+          </label>
+          <button type="submit">Загрузить версию 1</button>
+        </form>
+      </details>
+      {{ end }}
+
+      {{ if .Documents }}
+      <div class="document-list">
+        {{ range .Documents }}
+        <article class="document-row">
+          <div class="document-main">
+            <div class="document-heading">
+              <h2>{{ .Title }}</h2>
+              <span class="status-pill">{{ .StatusLabel }}</span>
+            </div>
+            {{ if .Description }}<p>{{ .Description }}</p>{{ end }}
+            <div class="document-meta">
+              <span>Версия {{ .VersionNo }}</span>
+              <span>{{ .OriginalFilename }}</span>
+              <span>{{ .SizeLabel }}</span>
+              <span>{{ .UpdatedLabel }}</span>
+            </div>
+          </div>
+          <a class="button-link" href="/documents/{{ .ID }}/download">Скачать</a>
+        </article>
+        {{ end }}
+      </div>
+      {{ else }}
       <div class="empty-state">
         <strong>Документов пока нет</strong>
-        <span>Здесь появятся материалы, направленные на согласование.</span>
+        <span>Добавьте первый Word- или PDF-файл.</span>
       </div>
+      {{ end }}
 
       <div class="storage-check">
         <button

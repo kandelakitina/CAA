@@ -22,11 +22,12 @@ h1 { margin: 0; font-size: clamp(2rem, 5vw, 3.5rem); line-height: 1.08; }
 .form-stack { display: grid; gap: 1.25rem; }
 .form-stack label { display: grid; gap: 0.5rem; color: #cbd5e1; font-weight: 700; }
 
-input {
+input, textarea {
   width: 100%; padding: 0.9rem 1rem; border: 1px solid #33445f; border-radius: 0.8rem;
   outline: none; background: #0c1627; color: #f8fafc; font: inherit;
 }
-input:focus { border-color: #7890ff; box-shadow: 0 0 0 3px rgba(91, 120, 255, 0.2); }
+input:focus, textarea:focus { border-color: #7890ff; box-shadow: 0 0 0 3px rgba(91, 120, 255, 0.2); }
+textarea { resize: vertical; }
 
 button { padding: 0.85rem 1.2rem; border: 0; border-radius: 0.8rem; background: #5b78ff; color: white; font: inherit; font-weight: 800; cursor: pointer; }
 button:hover { background: #7890ff; }
@@ -44,8 +45,24 @@ button:hover { background: #7890ff; }
 .storage-status { display: inline-flex; padding: 0.65rem 0.85rem; border-radius: 0.75rem; font-weight: 700; }
 .storage-status--ok { background: rgba(52, 211, 153, 0.12); color: #6ee7b7; }
 .storage-status--error { background: rgba(248, 113, 113, 0.10); color: #fecaca; }
+.upload-panel { margin: 0 0 1.5rem; border: 1px solid #33445f; border-radius: 1rem; background: rgba(12, 22, 39, 0.7); }
+.upload-panel summary { padding: 1rem 1.25rem; color: #dbe5f5; font-weight: 800; cursor: pointer; }
+.upload-form { padding: 0 1.25rem 1.25rem; }
+.upload-form button { justify-self: start; }
+.document-list { display: grid; gap: 0.9rem; }
+.document-row { display: flex; align-items: center; justify-content: space-between; gap: 1.5rem; padding: 1.25rem; border: 1px solid #33445f; border-radius: 1rem; background: rgba(12, 22, 39, 0.72); }
+.document-main { min-width: 0; }
+.document-heading { display: flex; align-items: center; flex-wrap: wrap; gap: 0.75rem; }
+.document-heading h2 { margin: 0; font-size: 1.1rem; }
+.document-main p { margin: 0.7rem 0; color: #aebbd0; line-height: 1.45; }
+.document-meta { display: flex; flex-wrap: wrap; gap: 0.4rem 1rem; color: #8393ab; font-size: 0.83rem; }
+.status-pill { padding: 0.28rem 0.55rem; border-radius: 999px; background: rgba(138, 164, 255, 0.14); color: #aebeff; font-size: 0.78rem; font-weight: 800; }
+.button-link { flex: 0 0 auto; padding: 0.7rem 0.9rem; border-radius: 0.75rem; background: #24324a; color: #e8eef8; font-weight: 800; text-decoration: none; }
+.button-link:hover { background: #33445f; }
 
 @media (max-width: 680px) {
   .topbar { flex-direction: column; align-items: flex-start; }
   .account { width: 100%; align-items: flex-start; flex-wrap: wrap; }
+  .document-row { align-items: stretch; flex-direction: column; }
+  .button-link { text-align: center; }
 }
