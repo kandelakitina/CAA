@@ -1,0 +1,2 @@
+# Project-local Go tools and dependencies installed during development.
+.go/
