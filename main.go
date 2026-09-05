@@ -36,10 +36,11 @@ type application struct {
 }
 
 type user struct {
-	ID       int64
-	Email    string
-	FullName string
-	Role     string
+	ID                 int64
+	Email              string
+	FullName           string
+	Role               string
+	MustChangePassword bool
 }
 
 func main() {
@@ -81,6 +82,10 @@ func main() {
 	router.GET("/login", app.showLogin)
 	router.POST("/login", app.login)
 	router.POST("/logout", app.requireUser(), app.logout)
+	router.GET("/password/change", app.requireUser(), app.showChangePassword)
+	router.POST("/password/change", app.requireUser(), app.changePassword)
+	router.GET("/admin/users", app.requireUser(), app.requireRole("admin"), app.showUsers)
+	router.POST("/admin/users", app.requireUser(), app.requireRole("admin"), app.createUser)
 	router.GET("/", app.requireUser(), app.dashboard)
 	router.GET("/storage/check", app.requireUser(), app.checkStorage)
 	router.POST("/documents", app.requireUser(), app.createDocument)
@@ -112,6 +117,12 @@ func (app *application) migrate(ctx context.Context) error {
 			active BOOLEAN NOT NULL DEFAULT TRUE,
 			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 		);
+
+		ALTER TABLE users ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN NOT NULL DEFAULT FALSE;
+		ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check;
+		UPDATE users SET role = 'approver' WHERE role = 'reviewer';
+		ALTER TABLE users ADD CONSTRAINT users_role_check
+			CHECK (role IN ('admin', 'secretary', 'committee', 'approver', 'observer'));
 
 		CREATE TABLE IF NOT EXISTS sessions (
 			token_hash TEXT PRIMARY KEY,
@@ -217,10 +228,10 @@ func (app *application) login(c *gin.Context) {
 	var usr user
 	var passwordHash string
 	err := app.db.QueryRow(c.Request.Context(), `
-		SELECT id, email, full_name, role, password_hash
+		SELECT id, email, full_name, role, must_change_password, password_hash
 		FROM users
 		WHERE email = $1 AND active = TRUE
-	`, email).Scan(&usr.ID, &usr.Email, &usr.FullName, &usr.Role, &passwordHash)
+	`, email).Scan(&usr.ID, &usr.Email, &usr.FullName, &usr.Role, &usr.MustChangePassword, &passwordHash)
 	if err != nil || !verifyPassword(password, passwordHash) {
 		c.HTML(http.StatusUnauthorized, "login.html", gin.H{
 			"Email": email,
@@ -245,6 +256,10 @@ func (app *application) login(c *gin.Context) {
 	}
 
 	app.setSessionCookie(c, token, int(sessionLifetime.Seconds()))
+	if usr.MustChangePassword {
+		c.Redirect(http.StatusSeeOther, "/password/change")
+		return
+	}
 	c.Redirect(http.StatusSeeOther, "/")
 }
 
@@ -269,6 +284,11 @@ func (app *application) requireUser() gin.HandlerFunc {
 			return
 		}
 		c.Set("user", usr)
+		if usr.MustChangePassword && c.Request.URL.Path != "/password/change" && c.Request.URL.Path != "/logout" {
+			c.Redirect(http.StatusSeeOther, "/password/change")
+			c.Abort()
+			return
+		}
 		c.Next()
 	}
 }
@@ -281,13 +301,13 @@ func (app *application) currentUser(c *gin.Context) (user, bool) {
 
 	var usr user
 	err = app.db.QueryRow(c.Request.Context(), `
-		SELECT u.id, u.email, u.full_name, u.role
+		SELECT u.id, u.email, u.full_name, u.role, u.must_change_password
 		FROM sessions s
 		JOIN users u ON u.id = s.user_id
 		WHERE s.token_hash = $1
 		  AND s.expires_at > NOW()
 		  AND u.active = TRUE
-	`, app.sessionDigest(token)).Scan(&usr.ID, &usr.Email, &usr.FullName, &usr.Role)
+	`, app.sessionDigest(token)).Scan(&usr.ID, &usr.Email, &usr.FullName, &usr.Role, &usr.MustChangePassword)
 	if err != nil {
 		if !errors.Is(err, pgx.ErrNoRows) {
 			log.Printf("read session: %v", err)

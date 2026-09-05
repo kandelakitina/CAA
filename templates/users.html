@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ .Title }}</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <p class="eyebrow">Neva Concert Hall</p>
+      <strong>Корпоративные согласования</strong>
+    </div>
+    <div class="account">
+      <a class="nav-link" href="/">Документы</a>
+      <a class="nav-link" href="/password/change">Пароль</a>
+      <span>{{ .User.FullName }}</span>
+      <span class="role">{{ .User.Role }}</span>
+      <form method="post" action="/logout"><button type="submit" class="button-secondary">Выйти</button></form>
+    </div>
+  </header>
+
+  <main class="content">
+    <section class="card dashboard-card">
+      <p class="eyebrow">Администрирование</p>
+      <h1>Пользователи</h1>
+      <p class="lead">Создайте учётную запись, передайте человеку временный пароль отдельным безопасным каналом. При первом входе система потребует заменить его.</p>
+      {{ if .Error }}<div class="alert">{{ .Error }}</div>{{ end }}
+
+      <details class="upload-panel" {{ if .Error }}open{{ end }}>
+        <summary>Добавить пользователя</summary>
+        <form class="form-stack upload-form" method="post" action="/admin/users">
+          <label>
+            Фамилия и имя
+            <input name="full_name" value="{{ .FullName }}" maxlength="200" required autocomplete="off">
+          </label>
+          <label>
+            Электронная почта — логин
+            <input type="email" name="email" value="{{ .Email }}" maxlength="320" required autocomplete="off">
+          </label>
+          <label>
+            Роль
+            <select name="role" required>
+              <option value="committee" {{ if eq .SelectedRole "committee" }}selected{{ end }}>Член комитета</option>
+              <option value="approver" {{ if eq .SelectedRole "approver" }}selected{{ end }}>Согласующий</option>
+              <option value="secretary" {{ if eq .SelectedRole "secretary" }}selected{{ end }}>Секретарь</option>
+              <option value="observer" {{ if eq .SelectedRole "observer" }}selected{{ end }}>Наблюдатель</option>
+            </select>
+          </label>
+          <label>
+            Временный пароль — не менее 12 символов
+            <input type="password" name="temporary_password" minlength="12" required autocomplete="new-password">
+          </label>
+          <button type="submit">Создать пользователя</button>
+        </form>
+      </details>
+
+      <div class="user-list">
+        {{ range .Users }}
+        <article class="user-row">
+          <div class="avatar" aria-hidden="true">●</div>
+          <div class="user-main">
+            <strong>{{ .FullName }}</strong>
+            <span>{{ .Email }}</span>
+          </div>
+          <div class="user-flags">
+            <span class="status-pill">{{ .RoleLabel }}</span>
+            {{ if .MustChangePassword }}<span class="temporary-pill">Временный пароль</span>{{ end }}
+            {{ if not .Active }}<span class="inactive-pill">Отключён</span>{{ end }}
+          </div>
+          <span class="created-label">с {{ .CreatedLabel }}</span>
+        </article>
+        {{ end }}
+      </div>
+    </section>
+  </main>
+</body>
+</html>
