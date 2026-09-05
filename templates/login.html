@@ -16,6 +16,7 @@
       {{ if .Error }}<div class="alert" role="alert">{{ .Error }}</div>{{ end }}
 
       <form method="post" action="/login" class="form-stack">
+        <input type="hidden" name="_csrf" value="{{ .CSRFToken }}">
         <label>
           <span>Электронная почта</span>
           <input type="email" name="email" value="{{ .Email }}" autocomplete="username" required autofocus>

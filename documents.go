@@ -72,6 +72,7 @@ func (app *application) renderDashboard(c *gin.Context, status int, message stri
 	c.HTML(status, "dashboard.html", gin.H{
 		"Title":     "Neva Concert Hall Corporate Approvals",
 		"User":      usr,
+		"CSRFToken": app.templateCSRF(c),
 		"Documents": documents,
 		"Error":     message,
 	})
@@ -214,12 +215,13 @@ func (app *application) renderDocument(c *gin.Context, status int, documentID in
 		return
 	}
 	c.HTML(status, "document.html", gin.H{
-		"Title":    detail.Title,
-		"User":     usr,
-		"Document": detail,
-		"Versions": versions,
-		"Approval": approval,
-		"Error":    message,
+		"Title":     detail.Title,
+		"User":      usr,
+		"CSRFToken": app.templateCSRF(c),
+		"Document":  detail,
+		"Versions":  versions,
+		"Approval":  approval,
+		"Error":     message,
 	})
 }
 

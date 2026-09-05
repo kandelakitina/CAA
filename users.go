@@ -91,6 +91,7 @@ func (app *application) renderUsers(c *gin.Context, status int, message string, 
 	}
 	values["Title"] = "Пользователи"
 	values["User"] = c.MustGet("user").(user)
+	values["CSRFToken"] = app.templateCSRF(c)
 	values["Users"] = users
 	values["Error"] = message
 	c.HTML(status, "users.html", values)
@@ -264,8 +265,9 @@ func (app *application) deleteUser(c *gin.Context) {
 
 func (app *application) showChangePassword(c *gin.Context) {
 	c.HTML(http.StatusOK, "change-password.html", gin.H{
-		"Title": "Смена пароля",
-		"User":  c.MustGet("user").(user),
+		"Title":     "Смена пароля",
+		"User":      c.MustGet("user").(user),
+		"CSRFToken": app.templateCSRF(c),
 	})
 }
 
@@ -277,9 +279,10 @@ func (app *application) changePassword(c *gin.Context) {
 
 	renderError := func(status int, message string) {
 		c.HTML(status, "change-password.html", gin.H{
-			"Title": "Смена пароля",
-			"User":  usr,
-			"Error": message,
+			"Title":     "Смена пароля",
+			"User":      usr,
+			"CSRFToken": app.templateCSRF(c),
+			"Error":     message,
 		})
 	}
 

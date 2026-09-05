@@ -17,7 +17,7 @@
       <a class="nav-link" href="/password/change">Пароль</a>
       <span>{{ .User.FullName }}</span>
       <span class="role">{{ .User.Role }}</span>
-      <form method="post" action="/logout"><button type="submit" class="button-secondary">Выйти</button></form>
+      <form method="post" action="/logout"><input type="hidden" name="_csrf" value="{{ .CSRFToken }}"><button type="submit" class="button-secondary">Выйти</button></form>
     </div>
   </header>
 
@@ -32,6 +32,7 @@
       <details class="upload-panel" {{ if .Error }}open{{ end }}>
         <summary>Добавить пользователя</summary>
         <form class="form-stack upload-form" method="post" action="/admin/users">
+          <input type="hidden" name="_csrf" value="{{ .CSRFToken }}">
           <label>
             Фамилия и имя
             <input name="full_name" value="{{ .FullName }}" maxlength="200" required autocomplete="off">
@@ -79,6 +80,7 @@
           <details class="reset-panel" {{ if eq $.ResetUserID .ID }}open{{ end }}>
             <summary>Сбросить пароль</summary>
             <form class="form-stack reset-form" method="post" action="/admin/users/{{ .ID }}/reset-password">
+              <input type="hidden" name="_csrf" value="{{ $.CSRFToken }}">
               <p class="form-hint">Пользователь будет выведен со всех устройств и при следующем входе должен будет заменить этот пароль.</p>
               <label>
                 Новый временный пароль
@@ -92,6 +94,7 @@
             </form>
           </details>
           <form class="delete-user-form" method="post" action="/admin/users/{{ .ID }}/delete" onsubmit="return confirm('Удалить пользователя {{ .FullName }}? Вход будет немедленно отключён.');">
+            <input type="hidden" name="_csrf" value="{{ $.CSRFToken }}">
             <button type="submit" class="danger-link">Удалить пользователя</button>
           </form>
           {{ end }}

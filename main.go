@@ -34,6 +34,7 @@ type application struct {
 	db            *pgxpool.Pool
 	sessionSecret []byte
 	storage       *storage
+	loginLimiter  *loginLimiter
 }
 
 type user struct {
@@ -63,7 +64,11 @@ func main() {
 		log.Fatal("SESSION_SECRET must contain at least 32 characters")
 	}
 
-	app := &application{db: db, sessionSecret: []byte(secret)}
+	app := &application{
+		db:            db,
+		sessionSecret: []byte(secret),
+		loginLimiter:  newLoginLimiter(5, 15*time.Minute),
+	}
 	app.storage, err = newStorage(ctx)
 	if err != nil {
 		log.Printf("S3 storage is not ready: %v", err)
@@ -81,25 +86,25 @@ func main() {
 
 	router.GET("/health", app.health)
 	router.GET("/login", app.showLogin)
-	router.POST("/login", app.login)
-	router.POST("/logout", app.requireUser(), app.logout)
+	router.POST("/login", app.requireLoginCSRF(), app.login)
+	router.POST("/logout", app.requireUser(), app.requireCSRF(), app.logout)
 	router.GET("/password/change", app.requireUser(), app.showChangePassword)
-	router.POST("/password/change", app.requireUser(), app.changePassword)
+	router.POST("/password/change", app.requireUser(), app.requireCSRF(), app.changePassword)
 	router.GET("/admin/users", app.requireUser(), app.requireRole("admin"), app.showUsers)
-	router.POST("/admin/users", app.requireUser(), app.requireRole("admin"), app.createUser)
-	router.POST("/admin/users/:id/reset-password", app.requireUser(), app.requireRole("admin"), app.resetUserPassword)
-	router.POST("/admin/users/:id/delete", app.requireUser(), app.requireRole("admin"), app.deleteUser)
+	router.POST("/admin/users", app.requireUser(), app.requireCSRF(), app.requireRole("admin"), app.createUser)
+	router.POST("/admin/users/:id/reset-password", app.requireUser(), app.requireCSRF(), app.requireRole("admin"), app.resetUserPassword)
+	router.POST("/admin/users/:id/delete", app.requireUser(), app.requireCSRF(), app.requireRole("admin"), app.deleteUser)
 	router.GET("/", app.requireUser(), app.dashboard)
 	router.GET("/storage/check", app.requireUser(), app.checkStorage)
-	router.POST("/documents", app.requireUser(), app.createDocument)
+	router.POST("/documents", app.requireUser(), app.requireCSRF(), app.createDocument)
 	router.GET("/documents/:id", app.requireUser(), app.showDocument)
-	router.POST("/documents/:id/versions", app.requireUser(), app.createDocumentVersion)
+	router.POST("/documents/:id/versions", app.requireUser(), app.requireCSRF(), app.createDocumentVersion)
 	router.GET("/documents/:id/download", app.requireUser(), app.downloadCurrentDocument)
 	router.GET("/documents/:id/versions/:version/download", app.requireUser(), app.downloadDocumentVersion)
-	router.POST("/documents/:id/approval/start", app.requireUser(), app.requireRole("admin", "secretary"), app.startApproval)
-	router.POST("/documents/:id/approval/respond", app.requireUser(), app.respondToApproval)
-	router.POST("/documents/:id/approval/complete", app.requireUser(), app.requireRole("admin", "secretary"), app.completeApproval)
-	router.POST("/documents/:id/approval/cancel", app.requireUser(), app.requireRole("admin", "secretary"), app.cancelApproval)
+	router.POST("/documents/:id/approval/start", app.requireUser(), app.requireCSRF(), app.requireRole("admin", "secretary"), app.startApproval)
+	router.POST("/documents/:id/approval/respond", app.requireUser(), app.requireCSRF(), app.respondToApproval)
+	router.POST("/documents/:id/approval/complete", app.requireUser(), app.requireCSRF(), app.requireRole("admin", "secretary"), app.completeApproval)
+	router.POST("/documents/:id/approval/cancel", app.requireUser(), app.requireCSRF(), app.requireRole("admin", "secretary"), app.cancelApproval)
 
 	port := os.Getenv("PORT")
 	if port == "" {
@@ -258,12 +263,27 @@ func (app *application) showLogin(c *gin.Context) {
 		c.Redirect(http.StatusSeeOther, "/")
 		return
 	}
-	c.HTML(http.StatusOK, "login.html", gin.H{})
+	token, err := app.issueLoginCSRF(c)
+	if err != nil {
+		c.String(http.StatusInternalServerError, "Не удалось подготовить форму входа")
+		return
+	}
+	c.HTML(http.StatusOK, "login.html", gin.H{"CSRFToken": token})
 }
 
 func (app *application) login(c *gin.Context) {
 	email := strings.ToLower(strings.TrimSpace(c.PostForm("email")))
 	password := c.PostForm("password")
+	limiterKey := loginLimiterKey(c.Request.RemoteAddr, email)
+	if allowed, retryAfter := app.loginLimiter.allow(limiterKey, time.Now()); !allowed {
+		c.Header("Retry-After", strconv.Itoa(int(retryAfter.Seconds())+1))
+		c.HTML(http.StatusTooManyRequests, "login.html", gin.H{
+			"Email":     email,
+			"CSRFToken": c.PostForm("_csrf"),
+			"Error":     "Слишком много неудачных попыток. Повторите вход позже",
+		})
+		return
+	}
 
 	var usr user
 	var passwordHash string
@@ -273,12 +293,15 @@ func (app *application) login(c *gin.Context) {
 		WHERE email = $1 AND active = TRUE
 	`, email).Scan(&usr.ID, &usr.Email, &usr.FullName, &usr.Role, &usr.MustChangePassword, &passwordHash)
 	if err != nil || !verifyPassword(password, passwordHash) {
+		app.loginLimiter.failure(limiterKey, time.Now())
 		c.HTML(http.StatusUnauthorized, "login.html", gin.H{
-			"Email": email,
-			"Error": "Неверный адрес электронной почты или пароль",
+			"Email":     email,
+			"CSRFToken": c.PostForm("_csrf"),
+			"Error":     "Неверный адрес электронной почты или пароль",
 		})
 		return
 	}
+	app.loginLimiter.success(limiterKey)
 
 	token, err := randomToken(32)
 	if err != nil {

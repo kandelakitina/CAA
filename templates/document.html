@@ -17,7 +17,7 @@
       <a class="nav-link" href="/password/change">Пароль</a>
       <span>{{ .User.FullName }}</span>
       <span class="role">{{ .User.Role }}</span>
-      <form method="post" action="/logout"><button type="submit" class="button-secondary">Выйти</button></form>
+      <form method="post" action="/logout"><input type="hidden" name="_csrf" value="{{ .CSRFToken }}"><button type="submit" class="button-secondary">Выйти</button></form>
     </div>
   </header>
 
@@ -38,6 +38,7 @@
       <details class="upload-panel">
         <summary>Загрузить новую редакцию</summary>
         <form class="form-stack upload-form" method="post" action="/documents/{{ .Document.ID }}/versions" enctype="multipart/form-data">
+          <input type="hidden" name="_csrf" value="{{ .CSRFToken }}">
           <p class="form-hint">Она получит номер версии {{ .Document.NextVersion }}. Предыдущая версия останется доступна.</p>
           <label>
             Файл, не более 25 МБ
@@ -58,6 +59,7 @@
         <details class="approval-panel">
           <summary>Запустить согласование версии {{ .Document.CurrentVersion }}</summary>
           <form class="form-stack approval-form" method="post" action="/documents/{{ .Document.ID }}/approval/start">
+            <input type="hidden" name="_csrf" value="{{ $.CSRFToken }}">
             <fieldset class="participant-picker">
               <legend>Участники</legend>
               {{ range .Approval.Candidates }}
@@ -114,6 +116,7 @@
           <div class="response-card">
             <h3>Ваше решение</h3>
             <form class="form-stack" method="post" action="/documents/{{ .Document.ID }}/approval/respond">
+              <input type="hidden" name="_csrf" value="{{ $.CSRFToken }}">
               <label>
                 Решение
                 <select name="decision" required>
@@ -145,6 +148,7 @@
         <div class="management-grid">
           {{ if .Approval.Round.AllResponded }}
           <form class="form-stack management-card" method="post" action="/documents/{{ .Document.ID }}/approval/complete">
+            <input type="hidden" name="_csrf" value="{{ $.CSRFToken }}">
             <h3>Зафиксировать итог</h3>
             <label>
               Итог
@@ -161,6 +165,7 @@
           </form>
           {{ end }}
           <form class="form-stack management-card management-card--danger" method="post" action="/documents/{{ .Document.ID }}/approval/cancel">
+            <input type="hidden" name="_csrf" value="{{ $.CSRFToken }}">
             <h3>Отменить раунд</h3>
             <label>
               Причина
