@@ -32,6 +32,7 @@ const (
 type application struct {
 	db            *pgxpool.Pool
 	sessionSecret []byte
+	storage       *storage
 }
 
 type user struct {
@@ -61,6 +62,10 @@ func main() {
 	}
 
 	app := &application{db: db, sessionSecret: []byte(secret)}
+	app.storage, err = newStorage(ctx)
+	if err != nil {
+		log.Printf("S3 storage is not ready: %v", err)
+	}
 	if err := app.migrate(ctx); err != nil {
 		log.Fatalf("run database migration: %v", err)
 	}
@@ -77,6 +82,7 @@ func main() {
 	router.POST("/login", app.login)
 	router.POST("/logout", app.requireUser(), app.logout)
 	router.GET("/", app.requireUser(), app.dashboard)
+	router.GET("/storage/check", app.requireUser(), app.checkStorage)
 
 	port := os.Getenv("PORT")
 	if port == "" {

@@ -40,6 +40,10 @@ button:hover { background: #7890ff; }
 .dashboard-card { max-width: 64rem; margin: 0 auto; padding: clamp(2rem, 6vw, 4rem); }
 .empty-state { display: grid; gap: 0.45rem; padding: 1.5rem; border: 1px dashed #40516d; border-radius: 1rem; color: #aebbd0; }
 .empty-state strong { color: #f8fafc; }
+.storage-check { display: flex; align-items: center; flex-wrap: wrap; gap: 1rem; margin-top: 1.5rem; }
+.storage-status { display: inline-flex; padding: 0.65rem 0.85rem; border-radius: 0.75rem; font-weight: 700; }
+.storage-status--ok { background: rgba(52, 211, 153, 0.12); color: #6ee7b7; }
+.storage-status--error { background: rgba(248, 113, 113, 0.10); color: #fecaca; }
 
 @media (max-width: 680px) {
   .topbar { flex-direction: column; align-items: flex-start; }

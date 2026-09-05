@@ -29,6 +29,18 @@
         <strong>Документов пока нет</strong>
         <span>Здесь появятся материалы, направленные на согласование.</span>
       </div>
+
+      <div class="storage-check">
+        <button
+          type="button"
+          hx-get="/storage/check"
+          hx-target="#storage-check-result"
+          hx-swap="innerHTML"
+          hx-disabled-elt="this">
+          Проверить подключение S3
+        </button>
+        <div id="storage-check-result" aria-live="polite"></div>
+      </div>
     </section>
   </main>
 </body>

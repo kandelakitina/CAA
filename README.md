@@ -15,6 +15,9 @@ go run main.go
 `PGSSLMODE`, `SESSION_SECRET`, `INITIAL_ADMIN_EMAIL`, `INITIAL_ADMIN_PASSWORD` и
 опционально `INITIAL_ADMIN_NAME`.
 
+Для S3 также нужны `S3_ENDPOINT`, `S3_REGION`, `S3_BUCKET`, `S3_ACCESS_KEY_ID` и
+`S3_SECRET_ACCESS_KEY`.
+
 При первом запуске приложение создаст таблицы `users` и `sessions`, а затем первого
 администратора. После успешного входа `INITIAL_ADMIN_PASSWORD` следует удалить из
 переменных App Platform: хэш пароля уже сохранен в PostgreSQL.
