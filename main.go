@@ -25,9 +25,9 @@ import (
 )
 
 const (
-	passwordIterations = 210_000
+	passwordIterations    = 210_000
 	minimumPasswordLength = 8
-	sessionLifetime     = 12 * time.Hour
+	sessionLifetime       = 12 * time.Hour
 )
 
 type application struct {

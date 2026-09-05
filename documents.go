@@ -45,12 +45,12 @@ type documentDetail struct {
 }
 
 type documentVersionItem struct {
-	VersionNo       int
+	VersionNo        int
 	OriginalFilename string
-	SizeLabel       string
-	UploadedBy      string
-	CreatedLabel    string
-	IsCurrent       bool
+	SizeLabel        string
+	UploadedBy       string
+	CreatedLabel     string
+	IsCurrent        bool
 }
 
 type documentUpload struct {

@@ -33,20 +33,20 @@ type approvalParticipantView struct {
 }
 
 type approvalRoundView struct {
-	ID             int64
-	VersionNo      int
-	Status         string
-	StatusLabel    string
-	StartedBy      string
-	StartedAt      string
-	Deadline       string
-	FinalOutcome   string
-	OutcomeLabel   string
-	FinalComment   string
-	IsActive       bool
-	AllResponded   bool
-	PendingCount   int
-	Participants   []approvalParticipantView
+	ID           int64
+	VersionNo    int
+	Status       string
+	StatusLabel  string
+	StartedBy    string
+	StartedAt    string
+	Deadline     string
+	FinalOutcome string
+	OutcomeLabel string
+	FinalComment string
+	IsActive     bool
+	AllResponded bool
+	PendingCount int
+	Participants []approvalParticipantView
 }
 
 type approvalView struct {
