@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
@@ -135,16 +136,35 @@ func (app *application) createUser(c *gin.Context) {
 		c.String(http.StatusInternalServerError, "Не удалось обработать пароль")
 		return
 	}
-	_, err = app.db.Exec(c.Request.Context(), `
+	tx, err := app.db.Begin(c.Request.Context())
+	if err != nil {
+		c.String(http.StatusInternalServerError, "Не удалось начать создание пользователя")
+		return
+	}
+	defer tx.Rollback(c.Request.Context())
+	var userID int64
+	err = tx.QueryRow(c.Request.Context(), `
 		INSERT INTO users (email, full_name, password_hash, role, must_change_password)
 		VALUES ($1, $2, $3, $4, TRUE)
-	`, email, fullName, passwordHash, role)
+		RETURNING id
+	`, email, fullName, passwordHash, role).Scan(&userID)
 	if err != nil {
 		var databaseError *pgconn.PgError
 		if errors.As(err, &databaseError) && databaseError.Code == "23505" {
 			app.renderUsers(c, http.StatusConflict, "Пользователь с таким адресом уже существует", values)
 			return
 		}
+		c.String(http.StatusInternalServerError, "Не удалось создать пользователя")
+		return
+	}
+	if err := app.writeAudit(c.Request.Context(), tx, c.MustGet("user").(user), auditRecord{
+		EventType: "user.created", TargetType: "user", TargetID: &userID,
+		TargetLabel: fullName + " · " + email, Details: roleLabel(role),
+	}); err != nil {
+		c.String(http.StatusInternalServerError, "Не удалось записать событие аудита")
+		return
+	}
+	if err := tx.Commit(c.Request.Context()); err != nil {
 		c.String(http.StatusInternalServerError, "Не удалось создать пользователя")
 		return
 	}
@@ -184,21 +204,30 @@ func (app *application) resetUserPassword(c *gin.Context) {
 		return
 	}
 	defer tx.Rollback(c.Request.Context())
-	command, err := tx.Exec(c.Request.Context(), `
+	var targetName, targetEmail string
+	err = tx.QueryRow(c.Request.Context(), `
 		UPDATE users
 		SET password_hash = $2, must_change_password = TRUE
 		WHERE id = $1 AND active = TRUE
-	`, userID, passwordHash)
+		RETURNING full_name, email
+	`, userID, passwordHash).Scan(&targetName, &targetEmail)
+	if errors.Is(err, pgx.ErrNoRows) {
+		app.renderUsers(c, http.StatusNotFound, "Активный пользователь не найден", values)
+		return
+	}
 	if err != nil {
 		c.String(http.StatusInternalServerError, "Не удалось обновить пароль пользователя")
 		return
 	}
-	if command.RowsAffected() != 1 {
-		app.renderUsers(c, http.StatusNotFound, "Активный пользователь не найден", values)
-		return
-	}
 	if _, err := tx.Exec(c.Request.Context(), `DELETE FROM sessions WHERE user_id = $1`, userID); err != nil {
 		c.String(http.StatusInternalServerError, "Не удалось завершить действующие сессии пользователя")
+		return
+	}
+	if err := app.writeAudit(c.Request.Context(), tx, currentUser, auditRecord{
+		EventType: "user.password_reset", TargetType: "user", TargetID: &userID,
+		TargetLabel: targetName + " · " + targetEmail,
+	}); err != nil {
+		c.String(http.StatusInternalServerError, "Не удалось записать событие аудита")
 		return
 	}
 	if err := tx.Commit(c.Request.Context()); err != nil {
@@ -241,19 +270,28 @@ func (app *application) deleteUser(c *gin.Context) {
 		app.renderUsers(c, http.StatusConflict, "Пользователя нельзя удалить: от него ожидается решение в активном согласовании", nil)
 		return
 	}
-	command, err := tx.Exec(c.Request.Context(), `
+	var targetName, targetEmail string
+	err = tx.QueryRow(c.Request.Context(), `
 		UPDATE users SET active = FALSE WHERE id = $1 AND active = TRUE
-	`, userID)
+		RETURNING full_name, email
+	`, userID).Scan(&targetName, &targetEmail)
+	if errors.Is(err, pgx.ErrNoRows) {
+		app.renderUsers(c, http.StatusNotFound, "Активный пользователь не найден", nil)
+		return
+	}
 	if err != nil {
 		c.String(http.StatusInternalServerError, "Не удалось удалить пользователя")
 		return
 	}
-	if command.RowsAffected() != 1 {
-		app.renderUsers(c, http.StatusNotFound, "Активный пользователь не найден", nil)
-		return
-	}
 	if _, err := tx.Exec(c.Request.Context(), `DELETE FROM sessions WHERE user_id = $1`, userID); err != nil {
 		c.String(http.StatusInternalServerError, "Не удалось завершить сессии пользователя")
+		return
+	}
+	if err := app.writeAudit(c.Request.Context(), tx, currentUser, auditRecord{
+		EventType: "user.deactivated", TargetType: "user", TargetID: &userID,
+		TargetLabel: targetName + " · " + targetEmail,
+	}); err != nil {
+		c.String(http.StatusInternalServerError, "Не удалось записать событие аудита")
 		return
 	}
 	if err := tx.Commit(c.Request.Context()); err != nil {
@@ -315,12 +353,29 @@ func (app *application) changePassword(c *gin.Context) {
 		c.String(http.StatusInternalServerError, "Не удалось обработать новый пароль")
 		return
 	}
-	_, err = app.db.Exec(c.Request.Context(), `
+	tx, err := app.db.Begin(c.Request.Context())
+	if err != nil {
+		c.String(http.StatusInternalServerError, "Не удалось начать смену пароля")
+		return
+	}
+	defer tx.Rollback(c.Request.Context())
+	_, err = tx.Exec(c.Request.Context(), `
 		UPDATE users
 		SET password_hash = $2, must_change_password = FALSE
 		WHERE id = $1
 	`, usr.ID, newHash)
 	if err != nil {
+		c.String(http.StatusInternalServerError, "Не удалось сохранить новый пароль")
+		return
+	}
+	if err := app.writeAudit(c.Request.Context(), tx, usr, auditRecord{
+		EventType: "user.password_changed", TargetType: "user", TargetID: &usr.ID,
+		TargetLabel: usr.FullName + " · " + usr.Email,
+	}); err != nil {
+		c.String(http.StatusInternalServerError, "Не удалось записать событие аудита")
+		return
+	}
+	if err := tx.Commit(c.Request.Context()); err != nil {
 		c.String(http.StatusInternalServerError, "Не удалось сохранить новый пароль")
 		return
 	}

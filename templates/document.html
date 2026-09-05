@@ -13,7 +13,7 @@
       <strong>Корпоративные согласования</strong>
     </div>
     <div class="account">
-      {{ if eq .User.Role "admin" }}<a class="nav-link" href="/admin/users">Пользователи</a>{{ end }}
+      {{ if eq .User.Role "admin" }}<a class="nav-link" href="/admin/users">Пользователи</a><a class="nav-link" href="/admin/audit">Аудит</a>{{ end }}
       <a class="nav-link" href="/password/change">Пароль</a>
       <span>{{ .User.FullName }}</span>
       <span class="role">{{ .User.Role }}</span>

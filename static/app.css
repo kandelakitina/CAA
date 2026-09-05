@@ -132,6 +132,15 @@ button:hover { background: #7890ff; }
 .management-card--danger { border-color: rgba(248, 113, 113, 0.3); }
 .danger-button { background: #9f3445; }
 .danger-button:hover { background: #bd4054; }
+.audit-filters { display: grid; grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); align-items: end; gap: 0.9rem; margin-bottom: 1.5rem; padding: 1rem; border: 1px solid #33445f; border-radius: 1rem; background: rgba(12, 22, 39, 0.7); }
+.audit-filters label { display: grid; gap: 0.4rem; color: #cbd5e1; font-size: 0.82rem; font-weight: 700; }
+.audit-filter-actions { display: flex; align-items: center; gap: 1rem; }
+.audit-list { display: grid; gap: 0.65rem; }
+.audit-row { display: grid; grid-template-columns: 9.5rem minmax(12rem, 1fr) minmax(12rem, 0.8fr); gap: 1rem; padding: 1rem; border: 1px solid #33445f; border-radius: 0.85rem; background: rgba(12, 22, 39, 0.72); }
+.audit-row time { color: #8393ab; font-size: 0.82rem; white-space: nowrap; }
+.audit-event, .audit-actor { display: grid; align-content: start; gap: 0.25rem; min-width: 0; }
+.audit-event span, .audit-event small, .audit-actor span { color: #8393ab; overflow-wrap: anywhere; }
+.audit-event small, .audit-actor span { font-size: 0.78rem; }
 
 @media (max-width: 680px) {
   .topbar { flex-direction: column; align-items: flex-start; }
@@ -149,4 +158,5 @@ button:hover { background: #7890ff; }
   .delete-user-form { flex-basis: 100%; margin-left: 0; }
   .participant-result { grid-template-columns: 1fr; }
   .decision-block { justify-items: start; }
+  .audit-row { grid-template-columns: 1fr; }
 }

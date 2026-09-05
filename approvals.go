@@ -186,9 +186,10 @@ func (app *application) startApproval(c *gin.Context) {
 
 	var versionNo int
 	var documentStatus string
+	var documentTitle string
 	err = tx.QueryRow(ctx, `
-		SELECT current_version, status FROM documents WHERE id = $1 FOR UPDATE
-	`, documentID).Scan(&versionNo, &documentStatus)
+		SELECT current_version, status, title FROM documents WHERE id = $1 FOR UPDATE
+	`, documentID).Scan(&versionNo, &documentStatus, &documentTitle)
 	if errors.Is(err, pgx.ErrNoRows) {
 		c.String(http.StatusNotFound, "Документ не найден")
 		return
@@ -264,6 +265,14 @@ func (app *application) startApproval(c *gin.Context) {
 		c.String(http.StatusInternalServerError, "Не удалось изменить статус документа")
 		return
 	}
+	if err := app.writeAudit(ctx, tx, usr, auditRecord{
+		EventType: "approval.started", TargetType: "approval_round", TargetID: &roundID,
+		TargetLabel: documentTitle, DocumentID: &documentID, VersionNo: &versionNo,
+		Details: fmt.Sprintf("Назначено участников: %d", len(participantIDs)),
+	}); err != nil {
+		c.String(http.StatusInternalServerError, "Не удалось записать событие аудита")
+		return
+	}
 	if err := tx.Commit(ctx); err != nil {
 		c.String(http.StatusInternalServerError, "Не удалось запустить согласование")
 		return
@@ -308,7 +317,14 @@ func (app *application) respondToApproval(c *gin.Context) {
 		return
 	}
 
-	command, err := app.db.Exec(c.Request.Context(), `
+	tx, err := app.db.Begin(c.Request.Context())
+	if err != nil {
+		c.String(http.StatusInternalServerError, "Не удалось начать сохранение решения")
+		return
+	}
+	defer tx.Rollback(c.Request.Context())
+
+	command, err := tx.Exec(c.Request.Context(), `
 		UPDATE approval_participants p
 		SET decision = $3, comment = $4, responded_at = NOW()
 		FROM approval_rounds r
@@ -321,6 +337,30 @@ func (app *application) respondToApproval(c *gin.Context) {
 	}
 	if command.RowsAffected() != 1 {
 		c.String(http.StatusConflict, "Решение уже было сохранено или согласование закрыто")
+		return
+	}
+	var roundID int64
+	var versionNo int
+	var documentTitle string
+	if err := tx.QueryRow(c.Request.Context(), `
+		SELECT r.id, r.version_no, d.title
+		FROM approval_rounds r
+		JOIN documents d ON d.id = r.document_id
+		WHERE r.document_id = $1 AND r.status = 'active'
+	`, documentID).Scan(&roundID, &versionNo, &documentTitle); err != nil {
+		c.String(http.StatusInternalServerError, "Не удалось определить согласование")
+		return
+	}
+	if err := app.writeAudit(c.Request.Context(), tx, usr, auditRecord{
+		EventType: "approval.response_submitted", TargetType: "approval_round", TargetID: &roundID,
+		TargetLabel: documentTitle, DocumentID: &documentID, VersionNo: &versionNo,
+		Details: approvalDecisionLabel(role, decision),
+	}); err != nil {
+		c.String(http.StatusInternalServerError, "Не удалось записать событие аудита")
+		return
+	}
+	if err := tx.Commit(c.Request.Context()); err != nil {
+		c.String(http.StatusInternalServerError, "Не удалось сохранить решение")
 		return
 	}
 	c.Redirect(http.StatusSeeOther, fmt.Sprintf("/documents/%d", documentID))
@@ -351,9 +391,15 @@ func (app *application) completeApproval(c *gin.Context) {
 	}
 	defer tx.Rollback(ctx)
 	var roundID int64
+	var versionNo int
+	var documentTitle string
 	err = tx.QueryRow(ctx, `
-		SELECT id FROM approval_rounds WHERE document_id = $1 AND status = 'active' FOR UPDATE
-	`, documentID).Scan(&roundID)
+		SELECT r.id, r.version_no, d.title
+		FROM approval_rounds r
+		JOIN documents d ON d.id = r.document_id
+		WHERE r.document_id = $1 AND r.status = 'active'
+		FOR UPDATE OF r
+	`, documentID).Scan(&roundID, &versionNo, &documentTitle)
 	if errors.Is(err, pgx.ErrNoRows) {
 		c.String(http.StatusConflict, "Активное согласование не найдено")
 		return
@@ -383,6 +429,14 @@ func (app *application) completeApproval(c *gin.Context) {
 		c.String(http.StatusInternalServerError, "Не удалось изменить статус документа")
 		return
 	}
+	if err := app.writeAudit(ctx, tx, c.MustGet("user").(user), auditRecord{
+		EventType: "approval.completed", TargetType: "approval_round", TargetID: &roundID,
+		TargetLabel: documentTitle, DocumentID: &documentID, VersionNo: &versionNo,
+		Details: approvalOutcomeLabel(outcome),
+	}); err != nil {
+		c.String(http.StatusInternalServerError, "Не удалось записать событие аудита")
+		return
+	}
 	if err := tx.Commit(ctx); err != nil {
 		c.String(http.StatusInternalServerError, "Не удалось завершить согласование")
 		return
@@ -408,17 +462,36 @@ func (app *application) cancelApproval(c *gin.Context) {
 		return
 	}
 	defer tx.Rollback(ctx)
-	command, err := tx.Exec(ctx, `
+	var documentTitle string
+	if err := tx.QueryRow(ctx, `SELECT title FROM documents WHERE id = $1 FOR UPDATE`, documentID).Scan(&documentTitle); err != nil {
+		c.String(http.StatusConflict, "Документ не найден")
+		return
+	}
+	var roundID int64
+	var versionNo int
+	err = tx.QueryRow(ctx, `
 		UPDATE approval_rounds
 		SET status = 'cancelled', final_comment = $2, completed_at = NOW()
 		WHERE document_id = $1 AND status = 'active'
-	`, documentID, comment)
-	if err != nil || command.RowsAffected() != 1 {
+		RETURNING id, version_no
+	`, documentID, comment).Scan(&roundID, &versionNo)
+	if errors.Is(err, pgx.ErrNoRows) {
 		c.String(http.StatusConflict, "Активное согласование не найдено")
+		return
+	}
+	if err != nil {
+		c.String(http.StatusInternalServerError, "Не удалось отменить согласование")
 		return
 	}
 	if _, err := tx.Exec(ctx, `UPDATE documents SET status = 'draft', updated_at = NOW() WHERE id = $1`, documentID); err != nil {
 		c.String(http.StatusInternalServerError, "Не удалось изменить статус документа")
+		return
+	}
+	if err := app.writeAudit(ctx, tx, c.MustGet("user").(user), auditRecord{
+		EventType: "approval.cancelled", TargetType: "approval_round", TargetID: &roundID,
+		TargetLabel: documentTitle, DocumentID: &documentID, VersionNo: &versionNo,
+	}); err != nil {
+		c.String(http.StatusInternalServerError, "Не удалось записать событие аудита")
 		return
 	}
 	if err := tx.Commit(ctx); err != nil {

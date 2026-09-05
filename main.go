@@ -91,6 +91,7 @@ func main() {
 	router.GET("/password/change", app.requireUser(), app.showChangePassword)
 	router.POST("/password/change", app.requireUser(), app.requireCSRF(), app.changePassword)
 	router.GET("/admin/users", app.requireUser(), app.requireRole("admin"), app.showUsers)
+	router.GET("/admin/audit", app.requireUser(), app.requireRole("admin"), app.showAuditLog)
 	router.POST("/admin/users", app.requireUser(), app.requireCSRF(), app.requireRole("admin"), app.createUser)
 	router.POST("/admin/users/:id/reset-password", app.requireUser(), app.requireCSRF(), app.requireRole("admin"), app.resetUserPassword)
 	router.POST("/admin/users/:id/delete", app.requireUser(), app.requireCSRF(), app.requireRole("admin"), app.deleteUser)
@@ -206,6 +207,50 @@ func (app *application) migrate(ctx context.Context) error {
 
 		CREATE INDEX IF NOT EXISTS approval_participants_user_idx
 			ON approval_participants(user_id, round_id);
+
+		CREATE TABLE IF NOT EXISTS audit_events (
+			id BIGSERIAL PRIMARY KEY,
+			actor_user_id BIGINT NOT NULL,
+			actor_name TEXT NOT NULL,
+			actor_email TEXT NOT NULL,
+			actor_role TEXT NOT NULL,
+			event_type TEXT NOT NULL,
+			target_type TEXT NOT NULL DEFAULT '',
+			target_id BIGINT,
+			target_label TEXT NOT NULL DEFAULT '',
+			document_id BIGINT,
+			version_no INTEGER,
+			details TEXT NOT NULL DEFAULT '',
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		);
+
+		CREATE INDEX IF NOT EXISTS audit_events_created_at_idx
+			ON audit_events(created_at DESC, id DESC);
+		CREATE INDEX IF NOT EXISTS audit_events_actor_idx
+			ON audit_events(actor_user_id, created_at DESC);
+		CREATE INDEX IF NOT EXISTS audit_events_document_idx
+			ON audit_events(document_id, created_at DESC) WHERE document_id IS NOT NULL;
+
+		CREATE OR REPLACE FUNCTION prevent_audit_event_changes()
+		RETURNS TRIGGER AS $$
+		BEGIN
+			RAISE EXCEPTION 'audit events are immutable';
+		END;
+		$$ LANGUAGE plpgsql;
+
+		DO $$
+		BEGIN
+			IF NOT EXISTS (
+				SELECT 1 FROM pg_trigger
+				WHERE tgname = 'audit_events_immutable_trigger'
+				  AND tgrelid = 'audit_events'::regclass
+			) THEN
+				CREATE TRIGGER audit_events_immutable_trigger
+				BEFORE UPDATE OR DELETE ON audit_events
+				FOR EACH ROW EXECUTE FUNCTION prevent_audit_event_changes();
+			END IF;
+		END;
+		$$;
 	`
 	_, err := app.db.Exec(ctx, schema)
 	return err
@@ -309,11 +354,28 @@ func (app *application) login(c *gin.Context) {
 		return
 	}
 	expiresAt := time.Now().Add(sessionLifetime)
-	_, err = app.db.Exec(c.Request.Context(), `
+	tx, err := app.db.Begin(c.Request.Context())
+	if err != nil {
+		c.String(http.StatusInternalServerError, "Не удалось начать создание сессии")
+		return
+	}
+	defer tx.Rollback(c.Request.Context())
+	_, err = tx.Exec(c.Request.Context(), `
 		INSERT INTO sessions (token_hash, user_id, expires_at)
 		VALUES ($1, $2, $3)
 	`, app.sessionDigest(token), usr.ID, expiresAt)
 	if err != nil {
+		c.String(http.StatusInternalServerError, "Не удалось сохранить сессию")
+		return
+	}
+	if err := app.writeAudit(c.Request.Context(), tx, usr, auditRecord{
+		EventType: "session.login", TargetType: "user", TargetID: &usr.ID,
+		TargetLabel: usr.FullName + " · " + usr.Email,
+	}); err != nil {
+		c.String(http.StatusInternalServerError, "Не удалось записать событие аудита")
+		return
+	}
+	if err := tx.Commit(c.Request.Context()); err != nil {
 		c.String(http.StatusInternalServerError, "Не удалось сохранить сессию")
 		return
 	}
@@ -327,8 +389,29 @@ func (app *application) login(c *gin.Context) {
 }
 
 func (app *application) logout(c *gin.Context) {
+	usr := c.MustGet("user").(user)
+	tx, err := app.db.Begin(c.Request.Context())
+	if err != nil {
+		c.String(http.StatusInternalServerError, "Не удалось завершить сессию")
+		return
+	}
+	defer tx.Rollback(c.Request.Context())
 	if token, err := c.Cookie("session_token"); err == nil {
-		_, _ = app.db.Exec(c.Request.Context(), "DELETE FROM sessions WHERE token_hash = $1", app.sessionDigest(token))
+		if _, err := tx.Exec(c.Request.Context(), "DELETE FROM sessions WHERE token_hash = $1", app.sessionDigest(token)); err != nil {
+			c.String(http.StatusInternalServerError, "Не удалось завершить сессию")
+			return
+		}
+	}
+	if err := app.writeAudit(c.Request.Context(), tx, usr, auditRecord{
+		EventType: "session.logout", TargetType: "user", TargetID: &usr.ID,
+		TargetLabel: usr.FullName + " · " + usr.Email,
+	}); err != nil {
+		c.String(http.StatusInternalServerError, "Не удалось записать событие аудита")
+		return
+	}
+	if err := tx.Commit(c.Request.Context()); err != nil {
+		c.String(http.StatusInternalServerError, "Не удалось завершить сессию")
+		return
 	}
 	app.setSessionCookie(c, "", -1)
 	c.Redirect(http.StatusSeeOther, "/login")

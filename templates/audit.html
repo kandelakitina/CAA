@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ .Title }}</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  <header class="topbar">
+    <div><p class="eyebrow">Neva Concert Hall</p><strong>Корпоративные согласования</strong></div>
+    <div class="account">
+      <a class="nav-link" href="/">Документы</a>
+      <a class="nav-link" href="/admin/users">Пользователи</a>
+      <a class="nav-link" href="/password/change">Пароль</a>
+      <span>{{ .User.FullName }}</span>
+      <form method="post" action="/logout"><input type="hidden" name="_csrf" value="{{ .CSRFToken }}"><button type="submit" class="button-secondary">Выйти</button></form>
+    </div>
+  </header>
+
+  <main class="content">
+    <section class="card dashboard-card">
+      <p class="eyebrow">Администрирование</p>
+      <h1>Журнал аудита</h1>
+      <p class="lead">Неизменяемая история важных действий. Показаны последние 200 записей с учётом фильтров.</p>
+
+      <form class="audit-filters" method="get" action="/admin/audit">
+        <label>Событие
+          <select name="event_type">
+            <option value="">Все события</option>
+            <option value="session.login" {{ if eq .Filters.EventType "session.login" }}selected{{ end }}>Вход</option>
+            <option value="session.logout" {{ if eq .Filters.EventType "session.logout" }}selected{{ end }}>Выход</option>
+            <option value="user.created" {{ if eq .Filters.EventType "user.created" }}selected{{ end }}>Создание пользователя</option>
+            <option value="user.password_reset" {{ if eq .Filters.EventType "user.password_reset" }}selected{{ end }}>Сброс пароля</option>
+            <option value="user.password_changed" {{ if eq .Filters.EventType "user.password_changed" }}selected{{ end }}>Смена своего пароля</option>
+            <option value="user.deactivated" {{ if eq .Filters.EventType "user.deactivated" }}selected{{ end }}>Отключение пользователя</option>
+            <option value="document.created" {{ if eq .Filters.EventType "document.created" }}selected{{ end }}>Создание документа</option>
+            <option value="document.version_uploaded" {{ if eq .Filters.EventType "document.version_uploaded" }}selected{{ end }}>Новая версия</option>
+            <option value="approval.started" {{ if eq .Filters.EventType "approval.started" }}selected{{ end }}>Запуск согласования</option>
+            <option value="approval.response_submitted" {{ if eq .Filters.EventType "approval.response_submitted" }}selected{{ end }}>Решение участника</option>
+            <option value="approval.completed" {{ if eq .Filters.EventType "approval.completed" }}selected{{ end }}>Завершение</option>
+            <option value="approval.cancelled" {{ if eq .Filters.EventType "approval.cancelled" }}selected{{ end }}>Отмена</option>
+          </select>
+        </label>
+        <label>Пользователь
+          <select name="actor_id">
+            <option value="">Все пользователи</option>
+            {{ range .Actors }}<option value="{{ .ID }}" {{ if eq $.Filters.ActorID .ID }}selected{{ end }}>{{ .FullName }}</option>{{ end }}
+          </select>
+        </label>
+        <label>Документ №
+          <input type="number" name="document_id" min="1" value="{{ if .Filters.DocumentID }}{{ .Filters.DocumentID }}{{ end }}">
+        </label>
+        <label>С даты<input type="date" name="date_from" value="{{ .Filters.DateFrom }}"></label>
+        <label>По дату<input type="date" name="date_to" value="{{ .Filters.DateTo }}"></label>
+        <div class="audit-filter-actions"><button type="submit">Применить</button><a class="text-link" href="/admin/audit">Сбросить</a></div>
+      </form>
+
+      {{ if .Events }}
+      <div class="audit-list">
+        {{ range .Events }}
+        <article class="audit-row">
+          <time>{{ .CreatedAt }}</time>
+          <div class="audit-event"><strong>{{ .EventLabel }}</strong>{{ if .TargetLabel }}<span>{{ .TargetLabel }}</span>{{ end }}{{ if .ObjectMeta }}<small>{{ .ObjectMeta }}</small>{{ end }}{{ if .Details }}<small>{{ .Details }}</small>{{ end }}</div>
+          <div class="audit-actor"><strong>{{ .ActorName }}</strong><span>{{ .ActorEmail }} · {{ .ActorRole }}</span></div>
+        </article>
+        {{ end }}
+      </div>
+      {{ else }}
+      <div class="empty-state"><strong>Записей не найдено</strong><span>Измените фильтры или выполните действие в системе.</span></div>
+      {{ end }}
+    </section>
+  </main>
+</body>
+</html>

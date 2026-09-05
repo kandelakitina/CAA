@@ -279,9 +279,10 @@ func (app *application) createDocumentVersion(c *gin.Context) {
 	defer tx.Rollback(ctx)
 
 	var currentVersion int
+	var documentTitle string
 	err = tx.QueryRow(ctx, `
-		SELECT current_version FROM documents WHERE id = $1 FOR UPDATE
-	`, documentID).Scan(&currentVersion)
+		SELECT current_version, title FROM documents WHERE id = $1 FOR UPDATE
+	`, documentID).Scan(&currentVersion, &documentTitle)
 	if errors.Is(err, pgx.ErrNoRows) {
 		c.String(http.StatusNotFound, "Документ не найден")
 		return
@@ -339,6 +340,13 @@ func (app *application) createDocumentVersion(c *gin.Context) {
 		_, err = tx.Exec(ctx, `
 			UPDATE documents SET current_version = $2, status = 'draft', updated_at = NOW() WHERE id = $1
 		`, documentID, nextVersion)
+	}
+	if err == nil {
+		err = app.writeAudit(ctx, tx, usr, auditRecord{
+			EventType: "document.version_uploaded", TargetType: "document", TargetID: &documentID,
+			TargetLabel: documentTitle, DocumentID: &documentID, VersionNo: &nextVersion,
+			Details: "Загружен файл «" + upload.originalFilename + "»",
+		})
 	}
 	if err == nil {
 		err = tx.Commit(ctx)
@@ -435,6 +443,14 @@ func (app *application) createDocument(c *gin.Context) {
 		_, err = tx.Exec(ctx, `
 			UPDATE documents SET current_version = 1, updated_at = NOW() WHERE id = $1
 		`, documentID)
+	}
+	versionNo := 1
+	if err == nil {
+		err = app.writeAudit(ctx, tx, usr, auditRecord{
+			EventType: "document.created", TargetType: "document", TargetID: &documentID,
+			TargetLabel: title, DocumentID: &documentID, VersionNo: &versionNo,
+			Details: "Загружен файл «" + upload.originalFilename + "»",
+		})
 	}
 	if err == nil {
 		err = tx.Commit(ctx)
