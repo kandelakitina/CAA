@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ .Title }}</title>
+  <link rel="stylesheet" href="/static/app.css">
+  <script src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.8/dist/htmx.min.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <p class="eyebrow">Neva Concert Hall</p>
+      <strong>Корпоративные согласования</strong>
+    </div>
+    <div class="account">
+      <span>{{ .User.FullName }}</span>
+      <span class="role">{{ .User.Role }}</span>
+      <form method="post" action="/logout"><button type="submit" class="button-secondary">Выйти</button></form>
+    </div>
+  </header>
+
+  <main class="content">
+    <section class="card dashboard-card">
+      <p class="eyebrow">Закрытый кабинет</p>
+      <h1>Добро пожаловать</h1>
+      <p class="lead">Подключение к PostgreSQL и авторизация работают. Следующий модуль — реестр документов и их редакций.</p>
+      <div class="empty-state">
+        <strong>Документов пока нет</strong>
+        <span>Здесь появятся материалы, направленные на согласование.</span>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

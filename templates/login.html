@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Вход — Neva Approvals</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  <main class="shell">
+    <section class="card login-card">
+      <p class="eyebrow">Neva Concert Hall</p>
+      <h1>Корпоративные согласования</h1>
+      <p class="lead">Войдите, чтобы просматривать документы и принимать решения.</p>
+
+      {{ if .Error }}<div class="alert" role="alert">{{ .Error }}</div>{{ end }}
+
+      <form method="post" action="/login" class="form-stack">
+        <label>
+          <span>Электронная почта</span>
+          <input type="email" name="email" value="{{ .Email }}" autocomplete="username" required autofocus>
+        </label>
+        <label>
+          <span>Пароль</span>
+          <input type="password" name="password" autocomplete="current-password" required>
+        </label>
+        <button type="submit">Войти</button>
+      </form>
+    </section>
+  </main>
+</body>
+</html>
