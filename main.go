@@ -93,6 +93,10 @@ func main() {
 	router.POST("/documents/:id/versions", app.requireUser(), app.createDocumentVersion)
 	router.GET("/documents/:id/download", app.requireUser(), app.downloadCurrentDocument)
 	router.GET("/documents/:id/versions/:version/download", app.requireUser(), app.downloadDocumentVersion)
+	router.POST("/documents/:id/approval/start", app.requireUser(), app.requireRole("admin", "secretary"), app.startApproval)
+	router.POST("/documents/:id/approval/respond", app.requireUser(), app.respondToApproval)
+	router.POST("/documents/:id/approval/complete", app.requireUser(), app.requireRole("admin", "secretary"), app.completeApproval)
+	router.POST("/documents/:id/approval/cancel", app.requireUser(), app.requireRole("admin", "secretary"), app.cancelApproval)
 
 	port := os.Getenv("PORT")
 	if port == "" {
@@ -161,6 +165,39 @@ func (app *application) migrate(ctx context.Context) error {
 
 		CREATE INDEX IF NOT EXISTS documents_updated_at_idx ON documents(updated_at DESC);
 		CREATE INDEX IF NOT EXISTS document_versions_document_id_idx ON document_versions(document_id, version_no DESC);
+
+		CREATE TABLE IF NOT EXISTS approval_rounds (
+			id BIGSERIAL PRIMARY KEY,
+			document_id BIGINT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+			version_no INTEGER NOT NULL,
+			status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'completed', 'cancelled')),
+			started_by BIGINT NOT NULL REFERENCES users(id),
+			deadline DATE,
+			final_outcome TEXT CHECK (final_outcome IS NULL OR final_outcome IN ('approved', 'rejected')),
+			final_comment TEXT NOT NULL DEFAULT '',
+			started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			completed_at TIMESTAMPTZ,
+			FOREIGN KEY (document_id, version_no) REFERENCES document_versions(document_id, version_no)
+		);
+
+		CREATE UNIQUE INDEX IF NOT EXISTS approval_rounds_one_active_idx
+			ON approval_rounds(document_id) WHERE status = 'active';
+		CREATE INDEX IF NOT EXISTS approval_rounds_document_idx
+			ON approval_rounds(document_id, started_at DESC);
+
+		CREATE TABLE IF NOT EXISTS approval_participants (
+			id BIGSERIAL PRIMARY KEY,
+			round_id BIGINT NOT NULL REFERENCES approval_rounds(id) ON DELETE CASCADE,
+			user_id BIGINT NOT NULL REFERENCES users(id),
+			role_snapshot TEXT NOT NULL CHECK (role_snapshot IN ('committee', 'approver')),
+			decision TEXT CHECK (decision IS NULL OR decision IN ('approve', 'approve_with_comments', 'reject', 'abstain')),
+			comment TEXT NOT NULL DEFAULT '',
+			responded_at TIMESTAMPTZ,
+			UNIQUE (round_id, user_id)
+		);
+
+		CREATE INDEX IF NOT EXISTS approval_participants_user_idx
+			ON approval_participants(user_id, round_id);
 	`
 	_, err := app.db.Exec(ctx, schema)
 	return err

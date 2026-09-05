@@ -38,6 +38,7 @@ type documentDetail struct {
 	ID             int64
 	Title          string
 	Description    string
+	Status         string
 	StatusLabel    string
 	CurrentVersion int
 	NextVersion    int
@@ -164,6 +165,7 @@ func (app *application) loadDocument(ctx context.Context, documentID int64) (doc
 	if err != nil {
 		return documentDetail{}, nil, err
 	}
+	detail.Status = status
 	detail.StatusLabel = documentStatusLabel(status)
 	detail.NextVersion = detail.CurrentVersion + 1
 
@@ -206,11 +208,17 @@ func (app *application) renderDocument(c *gin.Context, status int, documentID in
 		c.String(http.StatusInternalServerError, "Не удалось загрузить документ")
 		return
 	}
+	approval, err := app.loadApprovalView(c.Request.Context(), documentID, detail.CurrentVersion, detail.Status, usr)
+	if err != nil {
+		c.String(http.StatusInternalServerError, "Не удалось загрузить согласование")
+		return
+	}
 	c.HTML(status, "document.html", gin.H{
 		"Title":    detail.Title,
 		"User":     usr,
 		"Document": detail,
 		"Versions": versions,
+		"Approval": approval,
 		"Error":    message,
 	})
 }
@@ -237,6 +245,17 @@ func (app *application) createDocumentVersion(c *gin.Context) {
 	documentID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil || documentID < 1 {
 		c.String(http.StatusBadRequest, "Некорректный идентификатор документа")
+		return
+	}
+	var activeApprovals int
+	if err := app.db.QueryRow(c.Request.Context(), `
+		SELECT COUNT(*) FROM approval_rounds WHERE document_id = $1 AND status = 'active'
+	`, documentID).Scan(&activeApprovals); err != nil {
+		c.String(http.StatusInternalServerError, "Не удалось проверить статус согласования")
+		return
+	}
+	if activeApprovals > 0 {
+		app.renderDocument(c, http.StatusConflict, documentID, "Сначала завершите или отмените текущее согласование")
 		return
 	}
 
@@ -267,6 +286,17 @@ func (app *application) createDocumentVersion(c *gin.Context) {
 	}
 	if err != nil {
 		c.String(http.StatusInternalServerError, "Не удалось определить текущую версию")
+		return
+	}
+	var approvalStarted bool
+	if err := tx.QueryRow(ctx, `
+		SELECT EXISTS (SELECT 1 FROM approval_rounds WHERE document_id = $1 AND status = 'active')
+	`, documentID).Scan(&approvalStarted); err != nil {
+		c.String(http.StatusInternalServerError, "Не удалось повторно проверить согласование")
+		return
+	}
+	if approvalStarted {
+		c.String(http.StatusConflict, "Согласование уже запущено; новая версия не загружена")
 		return
 	}
 	nextVersion := currentVersion + 1
@@ -305,7 +335,7 @@ func (app *application) createDocumentVersion(c *gin.Context) {
 	`, documentID, nextVersion, objectKey, s3VersionID, upload.originalFilename, upload.contentType, upload.header.Size, usr.ID)
 	if err == nil {
 		_, err = tx.Exec(ctx, `
-			UPDATE documents SET current_version = $2, updated_at = NOW() WHERE id = $1
+			UPDATE documents SET current_version = $2, status = 'draft', updated_at = NOW() WHERE id = $1
 		`, documentID, nextVersion)
 	}
 	if err == nil {

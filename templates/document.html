@@ -48,6 +48,130 @@
       </details>
       {{ end }}
 
+      <section class="approval-section">
+        <div class="section-heading">
+          <h2>Согласование</h2>
+          {{ if .Approval.Round }}<span>{{ .Approval.Round.StatusLabel }}</span>{{ end }}
+        </div>
+
+        {{ if .Approval.CanStart }}
+        <details class="approval-panel">
+          <summary>Запустить согласование версии {{ .Document.CurrentVersion }}</summary>
+          <form class="form-stack approval-form" method="post" action="/documents/{{ .Document.ID }}/approval/start">
+            <fieldset class="participant-picker">
+              <legend>Участники</legend>
+              {{ range .Approval.Candidates }}
+              <label class="check-row">
+                <input type="checkbox" name="participant_ids" value="{{ .ID }}">
+                <span><strong>{{ .FullName }}</strong><small>{{ .RoleLabel }} · {{ .Email }}</small></span>
+              </label>
+              {{ end }}
+            </fieldset>
+            <label>
+              Срок ответа — необязательно
+              <input type="date" name="deadline">
+            </label>
+            <button type="submit">Запустить согласование</button>
+          </form>
+        </details>
+        {{ else if and .Approval.CanManage (eq (len .Approval.Candidates) 0) }}
+        <div class="empty-state compact-empty">
+          <strong>Некого назначить</strong>
+          <span>Сначала создайте хотя бы одного члена комитета или согласующего.</span>
+        </div>
+        {{ end }}
+
+        {{ with .Approval.Round }}
+        <div class="round-card">
+          <div class="round-summary">
+            <div><strong>Версия {{ .VersionNo }}</strong><span>Запустил: {{ .StartedBy }} · {{ .StartedAt }}</span></div>
+            {{ if .Deadline }}<div><strong>Срок</strong><span>{{ .Deadline }}</span></div>{{ end }}
+            {{ if .IsActive }}<div><strong>Ожидается ответов</strong><span>{{ .PendingCount }}</span></div>{{ end }}
+            {{ if .OutcomeLabel }}<div><strong>Итог</strong><span>{{ .OutcomeLabel }}</span></div>{{ end }}
+          </div>
+          {{ if .FinalComment }}<p class="final-comment">{{ .FinalComment }}</p>{{ end }}
+
+          <div class="participant-results">
+            {{ range .Participants }}
+            <article class="participant-result">
+              <div>
+                <strong>{{ .FullName }}</strong>
+                <span>{{ .RoleLabel }}</span>
+              </div>
+              <div class="decision-block">
+                <span class="decision-pill {{ if .HasResponded }}decision-pill--done{{ end }}">{{ .DecisionLabel }}</span>
+                {{ if .RespondedAt }}<small>{{ .RespondedAt }}</small>{{ end }}
+              </div>
+              {{ if .Comment }}<p>{{ .Comment }}</p>{{ end }}
+            </article>
+            {{ end }}
+          </div>
+        </div>
+        {{ end }}
+
+        {{ if and .Approval.Round .Approval.Round.IsActive .Approval.CurrentParticipant }}
+          {{ if not .Approval.CurrentParticipant.HasResponded }}
+          <div class="response-card">
+            <h3>Ваше решение</h3>
+            <form class="form-stack" method="post" action="/documents/{{ .Document.ID }}/approval/respond">
+              <label>
+                Решение
+                <select name="decision" required>
+                  <option value="">Выберите</option>
+                  {{ if eq .Approval.CurrentParticipant.Role "committee" }}
+                  <option value="approve">За</option>
+                  <option value="reject">Против</option>
+                  <option value="abstain">Воздержаться</option>
+                  {{ else }}
+                  <option value="approve">Согласовать</option>
+                  <option value="approve_with_comments">Согласовать с замечаниями</option>
+                  <option value="reject">Не согласовать</option>
+                  {{ end }}
+                </select>
+              </label>
+              <label>
+                Комментарий
+                <textarea name="comment" rows="4" maxlength="5000" placeholder="Обязателен для всех решений, кроме согласования без замечаний"></textarea>
+              </label>
+              <button type="submit">Зафиксировать решение</button>
+            </form>
+          </div>
+          {{ else }}
+          <div class="success-note">Ваш ответ зафиксирован: {{ .Approval.CurrentParticipant.DecisionLabel }}.</div>
+          {{ end }}
+        {{ end }}
+
+        {{ if and .Approval.CanManage .Approval.Round .Approval.Round.IsActive }}
+        <div class="management-grid">
+          {{ if .Approval.Round.AllResponded }}
+          <form class="form-stack management-card" method="post" action="/documents/{{ .Document.ID }}/approval/complete">
+            <h3>Зафиксировать итог</h3>
+            <label>
+              Итог
+              <select name="outcome" required>
+                <option value="approved">Согласовано</option>
+                <option value="rejected">Не согласовано</option>
+              </select>
+            </label>
+            <label>
+              Итоговый комментарий
+              <textarea name="final_comment" rows="3" maxlength="5000"></textarea>
+            </label>
+            <button type="submit">Завершить согласование</button>
+          </form>
+          {{ end }}
+          <form class="form-stack management-card management-card--danger" method="post" action="/documents/{{ .Document.ID }}/approval/cancel">
+            <h3>Отменить раунд</h3>
+            <label>
+              Причина
+              <textarea name="cancel_comment" rows="3" maxlength="5000"></textarea>
+            </label>
+            <button type="submit" class="danger-button">Отменить согласование</button>
+          </form>
+        </div>
+        {{ end }}
+      </section>
+
       <div class="section-heading">
         <h2>История версий</h2>
         <span>{{ len .Versions }} шт.</span>
