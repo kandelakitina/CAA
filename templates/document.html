@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ .Title }}</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <p class="eyebrow">Neva Concert Hall</p>
+      <strong>Корпоративные согласования</strong>
+    </div>
+    <div class="account">
+      <span>{{ .User.FullName }}</span>
+      <span class="role">{{ .User.Role }}</span>
+      <form method="post" action="/logout"><button type="submit" class="button-secondary">Выйти</button></form>
+    </div>
+  </header>
+
+  <main class="content">
+    <section class="card dashboard-card">
+      <a class="back-link" href="/">← Все документы</a>
+      <div class="detail-heading">
+        <div>
+          <p class="eyebrow">Документ №{{ .Document.ID }}</p>
+          <h1>{{ .Document.Title }}</h1>
+        </div>
+        <span class="status-pill">{{ .Document.StatusLabel }}</span>
+      </div>
+      {{ if .Document.Description }}<p class="lead">{{ .Document.Description }}</p>{{ end }}
+      {{ if .Error }}<div class="alert">{{ .Error }}</div>{{ end }}
+
+      {{ if or (eq .User.Role "admin") (eq .User.Role "secretary") }}
+      <details class="upload-panel">
+        <summary>Загрузить новую редакцию</summary>
+        <form class="form-stack upload-form" method="post" action="/documents/{{ .Document.ID }}/versions" enctype="multipart/form-data">
+          <p class="form-hint">Она получит номер версии {{ .Document.NextVersion }}. Предыдущая версия останется доступна.</p>
+          <label>
+            Файл, не более 25 МБ
+            <input type="file" name="file" accept=".doc,.docx,.pdf" required>
+          </label>
+          <button type="submit">Загрузить новую версию</button>
+        </form>
+      </details>
+      {{ end }}
+
+      <div class="section-heading">
+        <h2>История версий</h2>
+        <span>{{ len .Versions }} шт.</span>
+      </div>
+      <div class="version-list">
+        {{ range .Versions }}
+        <article class="version-row">
+          <div class="version-number">v{{ .VersionNo }}</div>
+          <div class="version-main">
+            <div class="version-title">
+              <strong>{{ .OriginalFilename }}</strong>
+              {{ if .IsCurrent }}<span class="current-pill">Текущая</span>{{ end }}
+            </div>
+            <div class="document-meta">
+              <span>{{ .SizeLabel }}</span>
+              <span>Загрузил: {{ .UploadedBy }}</span>
+              <span>{{ .CreatedLabel }}</span>
+            </div>
+          </div>
+          <a class="button-link" href="/documents/{{ $.Document.ID }}/versions/{{ .VersionNo }}/download">Скачать</a>
+        </article>
+        {{ end }}
+      </div>
+    </section>
+  </main>
+</body>
+</html>

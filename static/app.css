@@ -59,10 +59,33 @@ button:hover { background: #7890ff; }
 .status-pill { padding: 0.28rem 0.55rem; border-radius: 999px; background: rgba(138, 164, 255, 0.14); color: #aebeff; font-size: 0.78rem; font-weight: 800; }
 .button-link { flex: 0 0 auto; padding: 0.7rem 0.9rem; border-radius: 0.75rem; background: #24324a; color: #e8eef8; font-weight: 800; text-decoration: none; }
 .button-link:hover { background: #33445f; }
+.title-link { color: #f8fafc; text-decoration: none; }
+.title-link:hover { color: #aebeff; }
+.row-actions { display: grid; justify-items: center; gap: 0.65rem; flex: 0 0 auto; }
+.text-link, .back-link { color: #9eb0ff; font-weight: 700; text-decoration: none; }
+.text-link { font-size: 0.8rem; }
+.text-link:hover, .back-link:hover { color: #c8d2ff; }
+.back-link { display: inline-flex; margin-bottom: 1.5rem; }
+.detail-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 1.5rem; }
+.detail-heading .status-pill { flex: 0 0 auto; margin-top: 0.25rem; }
+.form-hint { margin: 0; color: #8fa0b8; font-size: 0.9rem; }
+.section-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; margin: 2rem 0 1rem; }
+.section-heading h2 { margin: 0; }
+.section-heading span { color: #8393ab; }
+.version-list { display: grid; gap: 0.75rem; }
+.version-row { display: flex; align-items: center; gap: 1rem; padding: 1rem; border: 1px solid #33445f; border-radius: 1rem; background: rgba(12, 22, 39, 0.72); }
+.version-number { display: grid; place-items: center; flex: 0 0 3rem; height: 3rem; border-radius: 0.85rem; background: rgba(91, 120, 255, 0.16); color: #aebeff; font-weight: 900; }
+.version-main { min-width: 0; flex: 1; }
+.version-title { display: flex; align-items: center; flex-wrap: wrap; gap: 0.65rem; margin-bottom: 0.45rem; }
+.current-pill { padding: 0.2rem 0.45rem; border-radius: 999px; background: rgba(52, 211, 153, 0.12); color: #6ee7b7; font-size: 0.72rem; font-weight: 800; }
 
 @media (max-width: 680px) {
   .topbar { flex-direction: column; align-items: flex-start; }
   .account { width: 100%; align-items: flex-start; flex-wrap: wrap; }
   .document-row { align-items: stretch; flex-direction: column; }
   .button-link { text-align: center; }
+  .row-actions { justify-items: stretch; }
+  .detail-heading { flex-direction: column; }
+  .version-row { align-items: stretch; flex-direction: column; }
+  .version-number { width: 3rem; }
 }

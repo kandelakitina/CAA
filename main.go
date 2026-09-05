@@ -84,7 +84,10 @@ func main() {
 	router.GET("/", app.requireUser(), app.dashboard)
 	router.GET("/storage/check", app.requireUser(), app.checkStorage)
 	router.POST("/documents", app.requireUser(), app.createDocument)
+	router.GET("/documents/:id", app.requireUser(), app.showDocument)
+	router.POST("/documents/:id/versions", app.requireUser(), app.createDocumentVersion)
 	router.GET("/documents/:id/download", app.requireUser(), app.downloadCurrentDocument)
+	router.GET("/documents/:id/versions/:version/download", app.requireUser(), app.downloadDocumentVersion)
 
 	port := os.Getenv("PORT")
 	if port == "" {
