@@ -1,2 +1,5 @@
-# Project-local Go tools and dependencies installed during development.
-.go/
+.idea/
+.vscode/
+.env
+app
+.go
