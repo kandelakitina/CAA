@@ -1,7 +1,10 @@
 package main
 
 import (
+	"archive/zip"
+	"bytes"
 	"context"
+	"encoding/xml"
 	"errors"
 	"fmt"
 	"io"
@@ -135,11 +138,10 @@ func receiveDocumentUpload(c *gin.Context) (*documentUpload, int, string) {
 	if err != nil {
 		return nil, http.StatusBadRequest, "Не удалось прочитать загруженный файл"
 	}
-	header := make([]byte, 512)
-	read, err := io.ReadFull(file, header)
-	if err != nil && !errors.Is(err, io.ErrUnexpectedEOF) {
+	contentType, err := validateDocumentContent(file, fileHeader.Size, extension)
+	if err != nil {
 		file.Close()
-		return nil, http.StatusBadRequest, "Не удалось проверить загруженный файл"
+		return nil, http.StatusUnsupportedMediaType, err.Error()
 	}
 	if _, err := file.Seek(0, io.SeekStart); err != nil {
 		file.Close()
@@ -150,9 +152,200 @@ func receiveDocumentUpload(c *gin.Context) (*documentUpload, int, string) {
 		file:             file,
 		header:           fileHeader,
 		extension:        extension,
-		contentType:      http.DetectContentType(header[:read]),
+		contentType:      contentType,
 		originalFilename: filename,
 	}, 0, ""
+}
+
+func validateDocumentContent(file multipart.File, size int64, extension string) (string, error) {
+	switch extension {
+	case ".pdf":
+		if err := validatePDF(file, size); err != nil {
+			return "", err
+		}
+		return "application/pdf", nil
+	case ".doc":
+		if err := validateDOC(file); err != nil {
+			return "", err
+		}
+		return "application/msword", nil
+	case ".docx":
+		if err := validateDOCX(file, size); err != nil {
+			return "", err
+		}
+		return "application/vnd.openxmlformats-officedocument.wordprocessingml.document", nil
+	default:
+		return "", errors.New("Неподдерживаемый формат документа")
+	}
+}
+
+func validatePDF(file multipart.File, size int64) error {
+	if size < 9 {
+		return errors.New("Содержимое файла не соответствует формату PDF")
+	}
+	header := make([]byte, 8)
+	if _, err := file.ReadAt(header, 0); err != nil {
+		return errors.New("Не удалось проверить содержимое PDF")
+	}
+	validVersion := bytes.HasPrefix(header, []byte("%PDF-1.")) && header[7] >= '0' && header[7] <= '7'
+	validVersion = validVersion || (bytes.HasPrefix(header, []byte("%PDF-2.")) && header[7] == '0')
+	if !validVersion {
+		return errors.New("Содержимое файла не соответствует формату PDF")
+	}
+	tailSize := int64(2048)
+	if size < tailSize {
+		tailSize = size
+	}
+	tail := make([]byte, tailSize)
+	if _, err := file.ReadAt(tail, size-tailSize); err != nil {
+		return errors.New("Не удалось проверить завершение PDF")
+	}
+	if !bytes.Contains(tail, []byte("%%EOF")) {
+		return errors.New("PDF повреждён или загружен не полностью")
+	}
+	return nil
+}
+
+func validateDOC(file multipart.File) error {
+	const oleHeaderSize = 8
+	oleSignature := []byte{0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1}
+	header := make([]byte, oleHeaderSize)
+	if _, err := file.ReadAt(header, 0); err != nil || !bytes.Equal(header, oleSignature) {
+		return errors.New("Содержимое файла не соответствует формату DOC")
+	}
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		return errors.New("Не удалось проверить содержимое DOC")
+	}
+	contents, err := io.ReadAll(io.LimitReader(file, maxDocumentSize+1))
+	if err != nil {
+		return errors.New("Не удалось проверить содержимое DOC")
+	}
+	wordDocumentStream := []byte{'W', 0, 'o', 0, 'r', 0, 'd', 0, 'D', 0, 'o', 0, 'c', 0, 'u', 0, 'm', 0, 'e', 0, 'n', 0, 't', 0}
+	if !bytes.Contains(contents, wordDocumentStream) {
+		return errors.New("OLE-файл не содержит документ Microsoft Word")
+	}
+	return nil
+}
+
+func validateDOCX(file multipart.File, size int64) error {
+	reader, err := zip.NewReader(file, size)
+	if err != nil {
+		return errors.New("Содержимое файла не соответствует формату DOCX")
+	}
+	if len(reader.File) == 0 || len(reader.File) > 10_000 {
+		return errors.New("DOCX содержит недопустимое количество файлов")
+	}
+
+	required := map[string]bool{
+		"[Content_Types].xml": false,
+		"_rels/.rels":         false,
+		"word/document.xml":   false,
+	}
+	var totalUncompressed uint64
+	seenNames := make(map[string]bool, len(reader.File))
+	for _, entry := range reader.File {
+		cleanName := path.Clean(strings.ReplaceAll(entry.Name, "\\", "/"))
+		if cleanName == ".." || strings.HasPrefix(cleanName, "../") || strings.HasPrefix(entry.Name, "/") {
+			return errors.New("DOCX содержит небезопасный путь")
+		}
+		if seenNames[cleanName] {
+			return errors.New("DOCX содержит повторяющиеся имена файлов")
+		}
+		seenNames[cleanName] = true
+		if strings.EqualFold(cleanName, "word/vbaProject.bin") {
+			return errors.New("DOCX с макросами не поддерживается")
+		}
+		if entry.UncompressedSize64 > 100<<20 {
+			return errors.New("DOCX содержит слишком большой вложенный файл")
+		}
+		totalUncompressed += entry.UncompressedSize64
+		if totalUncompressed > 250<<20 {
+			return errors.New("Распакованный размер DOCX слишком велик")
+		}
+		if _, ok := required[cleanName]; ok {
+			required[cleanName] = true
+		}
+	}
+	for name, present := range required {
+		if !present {
+			return fmt.Errorf("DOCX повреждён: отсутствует %s", name)
+		}
+	}
+	if err := validateDOCXMetadata(reader); err != nil {
+		return err
+	}
+	return nil
+}
+
+func validateDOCXMetadata(reader *zip.Reader) error {
+	contentTypes, err := openZIPEntry(reader, "[Content_Types].xml", 1<<20)
+	if err != nil {
+		return errors.New("Не удалось проверить описание DOCX")
+	}
+	defer contentTypes.Close()
+	decoder := xml.NewDecoder(contentTypes)
+	foundWordDocument := false
+	for {
+		token, err := decoder.Token()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			return errors.New("Описание DOCX содержит некорректный XML")
+		}
+		start, ok := token.(xml.StartElement)
+		if !ok || start.Name.Local != "Override" {
+			continue
+		}
+		var partName, contentType string
+		for _, attribute := range start.Attr {
+			switch attribute.Name.Local {
+			case "PartName":
+				partName = attribute.Value
+			case "ContentType":
+				contentType = attribute.Value
+			}
+		}
+		if partName == "/word/document.xml" && contentType == "application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml" {
+			foundWordDocument = true
+		}
+	}
+	if !foundWordDocument {
+		return errors.New("Архив не является документом DOCX")
+	}
+
+	document, err := openZIPEntry(reader, "word/document.xml", 1<<20)
+	if err != nil {
+		return errors.New("Не удалось проверить основной файл DOCX")
+	}
+	defer document.Close()
+	decoder = xml.NewDecoder(document)
+	for {
+		token, err := decoder.Token()
+		if err != nil {
+			return errors.New("Основной файл DOCX содержит некорректный XML")
+		}
+		if start, ok := token.(xml.StartElement); ok {
+			if start.Name.Local != "document" || (start.Name.Space != "http://schemas.openxmlformats.org/wordprocessingml/2006/main" && start.Name.Space != "http://purl.oclc.org/ooxml/wordprocessingml/main") {
+				return errors.New("Архив не является документом Microsoft Word")
+			}
+			break
+		}
+	}
+	return nil
+}
+
+func openZIPEntry(reader *zip.Reader, name string, limit int64) (io.ReadCloser, error) {
+	for _, entry := range reader.File {
+		if path.Clean(strings.ReplaceAll(entry.Name, "\\", "/")) != name {
+			continue
+		}
+		if entry.UncompressedSize64 > uint64(limit) {
+			return nil, errors.New("ZIP entry exceeds validation limit")
+		}
+		return entry.Open()
+	}
+	return nil, errors.New("ZIP entry not found")
 }
 
 func (app *application) loadDocument(ctx context.Context, documentID int64) (documentDetail, []documentVersionItem, error) {
