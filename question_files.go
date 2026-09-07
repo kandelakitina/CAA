@@ -408,6 +408,9 @@ func (app *application) saveQuestionFileVersion(c *gin.Context, fileID int64) {
 	if err == nil && approvalStatus == "confirmed" {
 		_, err = tx.Exec(ctx, `UPDATE question_files SET current_version_no = $2, updated_at = NOW() WHERE id = $1`, fileID, nextVersion)
 	}
+	if err == nil && approvalStatus == "confirmed" && questionStatus == "internal_review" {
+		err = replaceActiveInternalReviewFileVersion(ctx, tx, questionID, fileID, nextVersion)
+	}
 	if err == nil {
 		_, err = tx.Exec(ctx, `UPDATE questions SET updated_at = NOW() WHERE id = $1`, questionID)
 	}
@@ -506,6 +509,12 @@ func (app *application) reviewQuestionFileVersion(c *gin.Context, confirm bool) 
 	`, fileID, versionNo, "pending", newStatus, usr.ID, reason)
 	if err == nil && confirm {
 		_, err = tx.Exec(c.Request.Context(), `UPDATE question_files SET current_version_no = $2, updated_at = NOW() WHERE id = $1`, fileID, versionNo)
+	}
+	if err == nil && confirm && questionStatus == "internal_review" {
+		err = replaceActiveInternalReviewFileVersion(c.Request.Context(), tx, questionID, fileID, versionNo)
+	}
+	if err == nil && !confirm && questionStatus == "internal_review" {
+		err = app.finishActiveInternalReviewIfComplete(c.Request.Context(), tx, usr, questionID)
 	}
 	if err == nil {
 		_, err = tx.Exec(c.Request.Context(), `UPDATE questions SET updated_at = NOW() WHERE id = $1`, questionID)

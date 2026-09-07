@@ -230,10 +230,10 @@ func (app *application) updateUserAssignment(c *gin.Context) {
 		return
 	}
 
-	var role, fullName, email string
+	var role, oldInternalService, fullName, email string
 	err = tx.QueryRow(c.Request.Context(), `
-		SELECT role, full_name, email FROM users WHERE id = $1 AND active = TRUE FOR UPDATE
-	`, userID).Scan(&role, &fullName, &email)
+		SELECT role, COALESCE(internal_service, ''), full_name, email FROM users WHERE id = $1 AND active = TRUE FOR UPDATE
+	`, userID).Scan(&role, &oldInternalService, &fullName, &email)
 	if errors.Is(err, pgx.ErrNoRows) {
 		app.renderUsers(c, http.StatusNotFound, "Активный пользователь не найден", values)
 		return
@@ -257,6 +257,17 @@ func (app *application) updateUserAssignment(c *gin.Context) {
 	if err := ensureUniqueActiveAssignment(c, tx, role, isCommitteeChair, userID); err != nil {
 		app.renderUsers(c, http.StatusConflict, err.Error(), values)
 		return
+	}
+	if role == "approver" && oldInternalService != internalService {
+		blocked, err := wouldLeaveActiveInternalReviewUnstaffed(c, tx, userID, oldInternalService)
+		if err != nil {
+			c.String(http.StatusInternalServerError, "Не удалось проверить активные внутренние согласования")
+			return
+		}
+		if blocked {
+			app.renderUsers(c, http.StatusConflict, "Нельзя сменить дирекцию: это последний активный представитель во время внутреннего согласования", values)
+			return
+		}
 	}
 	_, err = tx.Exec(c.Request.Context(), `
 		UPDATE users SET internal_service = NULLIF($2, ''), is_committee_chair = $3 WHERE id = $1
@@ -309,6 +320,24 @@ func ensureUniqueActiveAssignment(c *gin.Context, tx pgx.Tx, role string, chair 
 		}
 	}
 	return nil
+}
+
+func wouldLeaveActiveInternalReviewUnstaffed(c *gin.Context, tx pgx.Tx, userID int64, service string) (bool, error) {
+	if !validInternalService(service) {
+		return false, nil
+	}
+	var blocked bool
+	err := tx.QueryRow(c.Request.Context(), `
+		SELECT EXISTS (
+			SELECT 1 FROM internal_review_rounds round
+			WHERE round.status = 'active'
+		) AND NOT EXISTS (
+			SELECT 1 FROM users replacement
+			WHERE replacement.active = TRUE AND replacement.role = 'approver'
+			  AND replacement.internal_service = $2 AND replacement.id <> $1
+		)
+	`, userID, service).Scan(&blocked)
+	return blocked, err
 }
 
 func (app *application) resetUserPassword(c *gin.Context) {
@@ -394,6 +423,10 @@ func (app *application) deleteUser(c *gin.Context) {
 		return
 	}
 	defer tx.Rollback(c.Request.Context())
+	if err := lockUserAssignments(c, tx); err != nil {
+		c.String(http.StatusInternalServerError, "Не удалось проверить назначения пользователей")
+		return
+	}
 
 	var pendingApprovals int
 	err = tx.QueryRow(c.Request.Context(), `
@@ -409,6 +442,30 @@ func (app *application) deleteUser(c *gin.Context) {
 	if pendingApprovals > 0 {
 		app.renderUsers(c, http.StatusConflict, "Пользователя нельзя удалить: от него ожидается решение в активном согласовании", nil)
 		return
+	}
+	var targetRole, targetService string
+	err = tx.QueryRow(c.Request.Context(), `
+		SELECT role, COALESCE(internal_service, '') FROM users
+		WHERE id = $1 AND active = TRUE FOR UPDATE
+	`, userID).Scan(&targetRole, &targetService)
+	if errors.Is(err, pgx.ErrNoRows) {
+		app.renderUsers(c, http.StatusNotFound, "Активный пользователь не найден", nil)
+		return
+	}
+	if err != nil {
+		c.String(http.StatusInternalServerError, "Не удалось загрузить пользователя")
+		return
+	}
+	if targetRole == "approver" {
+		blocked, err := wouldLeaveActiveInternalReviewUnstaffed(c, tx, userID, targetService)
+		if err != nil {
+			c.String(http.StatusInternalServerError, "Не удалось проверить активные внутренние согласования")
+			return
+		}
+		if blocked {
+			app.renderUsers(c, http.StatusConflict, "Пользователя нельзя удалить: это последний представитель дирекции во время внутреннего согласования", nil)
+			return
+		}
 	}
 	var targetName, targetEmail string
 	err = tx.QueryRow(c.Request.Context(), `

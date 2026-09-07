@@ -34,6 +34,7 @@ type questionDetail struct {
 	Summary            string
 	DecisionText       string
 	DeadlineLabel      string
+	DeadlineValue      string
 	Counterparty       string
 	AmountLabel        string
 	Currency           string
@@ -225,6 +226,7 @@ func (app *application) showQuestion(c *gin.Context) {
 		return
 	}
 	detail.DeadlineLabel = deadline.Format("02.01.2006")
+	detail.DeadlineValue = deadline.Format("2006-01-02")
 	detail.TypeLabel = questionTypeLabel(questionType)
 	detail.SubtypeLabel = transactionSubtypeLabel(subtype)
 	detail.StatusLabel = questionStatusLabel(status)
@@ -238,10 +240,15 @@ func (app *application) showQuestion(c *gin.Context) {
 	}
 	canUpload := canUploadQuestionFiles(usr)
 	canUpload = canUpload && (status == "draft" || status == "internal_review" || status == "revision_required")
+	internalReview, err := app.loadInternalReview(c.Request.Context(), questionID, status, usr)
+	if err != nil {
+		c.String(http.StatusInternalServerError, "Не удалось загрузить внутреннее согласование")
+		return
+	}
 
 	c.HTML(http.StatusOK, "question.html", gin.H{
 		"Title": detail.Title, "User": usr, "CSRFToken": app.templateCSRF(c), "Question": detail,
-		"Files": files, "CanUploadFiles": canUpload,
+		"Files": files, "CanUploadFiles": canUpload, "InternalReview": internalReview,
 	})
 }
 

@@ -115,6 +115,90 @@
 		<div class="empty-state question-next-step"><strong>Комплект пока пуст</strong><span>Добавьте первый официальный файл вопроса.</span></div>
 		{{ end }}
 	  </section>
+
+	  <section class="internal-review-section">
+		<div class="section-heading">
+		  <div><p class="eyebrow">Четыре дирекции</p><h2>Внутреннее согласование</h2></div>
+		  {{ if .InternalReview.HasRound }}<span class="status-pill">{{ .InternalReview.StatusLabel }}</span>{{ end }}
+		</div>
+		{{ if .InternalReview.CanStart }}
+		<form class="form-stack review-start-form" method="post" action="/questions/{{ .Question.ID }}/internal-review/start">
+		  <input type="hidden" name="_csrf" value="{{ .CSRFToken }}">
+		  <label>Срок согласования<input type="date" name="deadline" required value="{{ .Question.DeadlineValue }}"></label>
+		  <button type="submit">Запустить внутреннее согласование</button>
+		</form>
+		<p class="form-hint">Перед запуском система проверит комплект, ожидающие загрузки и наличие представителей всех четырёх дирекций.</p>
+		{{ end }}
+
+		{{ if .InternalReview.HasRound }}
+		<div class="review-summary {{ if .InternalReview.PastDue }}review-summary--overdue{{ end }}">
+		  <span>Получено виз: <strong>{{ .InternalReview.ProgressLabel }}</strong></span>
+		  <span>Срок: <strong>{{ .InternalReview.DeadlineLabel }}</strong>{{ if .InternalReview.PastDue }} · просрочено{{ end }}</span>
+		</div>
+		{{ if .InternalReview.CanManage }}
+		<div class="review-management">
+		  <details class="upload-panel compact-panel"><summary>Продлить срок</summary>
+			<form class="form-stack" method="post" action="/questions/{{ .Question.ID }}/internal-review/extend">
+			  <input type="hidden" name="_csrf" value="{{ .CSRFToken }}">
+			  <label>Новый срок<input type="date" name="deadline" required></label>
+			  <label>Причина<textarea name="reason" rows="2" maxlength="2000" required></textarea></label>
+			  <button type="submit">Продлить</button>
+			</form>
+		  </details>
+		  <form method="post" action="/questions/{{ .Question.ID }}/internal-review/cancel">
+			<input type="hidden" name="_csrf" value="{{ .CSRFToken }}">
+			<button type="submit" class="button-danger">Отменить раунд</button>
+		  </form>
+		</div>
+		{{ end }}
+		<div class="review-grid">
+		  {{ range .InternalReview.Items }}
+		  <article class="review-item">
+			<div class="review-item-heading"><div><strong>{{ .FileTitle }}</strong><span>Версия {{ .VersionNo }}</span></div><span class="service-badge">{{ .ServiceLabel }}</span></div>
+			{{ if .FilePaused }}<p class="pending-visa">Файл приостановлен: новая версия ожидает решения секретаря.</p>{{ end }}
+			{{ if .HasVisa }}
+			<div class="visa-result">
+			  <strong>{{ .Visa.DecisionLabel }}</strong>
+			  <span>{{ .Visa.DecidedBy }} · {{ .Visa.DecidedLabel }}</span>
+			  {{ if .Visa.Comment }}<p>{{ .Visa.Comment }}</p>{{ end }}
+			  {{ if .Visa.CanWithdraw }}
+			  <form method="post" action="/questions/{{ $.Question.ID }}/internal-review/visas/{{ .Visa.ID }}/withdraw">
+				<input type="hidden" name="_csrf" value="{{ $.CSRFToken }}">
+				<button type="submit" class="button-secondary">Отозвать визу</button>
+			  </form>
+			  {{ end }}
+			</div>
+			{{ else if .CanRespond }}
+			<form class="form-stack visa-form" method="post" action="/questions/{{ $.Question.ID }}/internal-review/respond">
+			  <input type="hidden" name="_csrf" value="{{ $.CSRFToken }}">
+			  <input type="hidden" name="requirement_id" value="{{ .RequirementID }}">
+			  <label>Решение
+				<select name="decision" required>
+				  <option value="">Выберите решение</option>
+				  <option value="approved">Согласовано</option>
+				  <option value="approved_with_comments">Согласовано с замечаниями</option>
+				  <option value="rejected">Не согласовано</option>
+				  <option value="no_comments_without_review">Нет замечаний (без проверки)</option>
+				</select>
+			  </label>
+			  <label>Комментарий<textarea name="comment" rows="3" maxlength="5000"></textarea></label>
+			  <button type="submit">Отправить визу</button>
+			</form>
+			{{ else if not .FilePaused }}
+			<p class="pending-visa">Ожидается виза дирекции</p>
+			{{ end }}
+			{{ if .History }}
+			<details class="visa-history"><summary>Отозванные визы: {{ len .History }}</summary>
+			  {{ range .History }}<div><strong>{{ .DecisionLabel }}</strong><span>{{ .DecidedBy }} · {{ .DecidedLabel }} · отозвана {{ .WithdrawnLabel }}</span>{{ if .Comment }}<p>{{ .Comment }}</p>{{ end }}</div>{{ end }}
+			</details>
+			{{ end }}
+		  </article>
+		  {{ end }}
+		</div>
+		{{ else if not .InternalReview.CanStart }}
+		<div class="empty-state"><strong>Внутреннее согласование ещё не запускалось</strong></div>
+		{{ end }}
+	  </section>
     </section>
   </main>
 </body>

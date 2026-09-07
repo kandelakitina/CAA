@@ -36,6 +36,15 @@
 			<option value="user.deactivated" {{ if eq .Filters.EventType "user.deactivated" }}selected{{ end }}>Отключение пользователя</option>
 			<option value="user.assignment_updated" {{ if eq .Filters.EventType "user.assignment_updated" }}selected{{ end }}>Назначение пользователя</option>
 			<option value="question.created" {{ if eq .Filters.EventType "question.created" }}selected{{ end }}>Создание вопроса</option>
+			<option value="question.file_version_uploaded" {{ if eq .Filters.EventType "question.file_version_uploaded" }}selected{{ end }}>Загрузка файла вопроса</option>
+			<option value="question.file_version_confirmed" {{ if eq .Filters.EventType "question.file_version_confirmed" }}selected{{ end }}>Подтверждение файла вопроса</option>
+			<option value="question.file_version_rejected" {{ if eq .Filters.EventType "question.file_version_rejected" }}selected{{ end }}>Отклонение файла вопроса</option>
+			<option value="internal_review.started" {{ if eq .Filters.EventType "internal_review.started" }}selected{{ end }}>Запуск внутреннего согласования</option>
+			<option value="internal_review.visa_submitted" {{ if eq .Filters.EventType "internal_review.visa_submitted" }}selected{{ end }}>Внутренняя виза</option>
+			<option value="internal_review.visa_withdrawn" {{ if eq .Filters.EventType "internal_review.visa_withdrawn" }}selected{{ end }}>Отзыв внутренней визы</option>
+			<option value="internal_review.extended" {{ if eq .Filters.EventType "internal_review.extended" }}selected{{ end }}>Продление внутреннего согласования</option>
+			<option value="internal_review.completed" {{ if eq .Filters.EventType "internal_review.completed" }}selected{{ end }}>Завершение внутреннего согласования</option>
+			<option value="internal_review.cancelled" {{ if eq .Filters.EventType "internal_review.cancelled" }}selected{{ end }}>Отмена внутреннего согласования</option>
             <option value="document.created" {{ if eq .Filters.EventType "document.created" }}selected{{ end }}>Создание документа</option>
             <option value="document.version_uploaded" {{ if eq .Filters.EventType "document.version_uploaded" }}selected{{ end }}>Новая версия</option>
             <option value="approval.started" {{ if eq .Filters.EventType "approval.started" }}selected{{ end }}>Запуск согласования</option>

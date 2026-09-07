@@ -105,6 +105,11 @@ func main() {
 	router.GET("/questions/:id/files/:fileID/versions/:version/download", app.requireUser(), app.downloadQuestionFileVersion)
 	router.POST("/questions/:id/files/:fileID/versions/:version/confirm", app.requireUser(), app.requireCSRF(), app.requireRole("secretary"), app.confirmQuestionFileVersion)
 	router.POST("/questions/:id/files/:fileID/versions/:version/reject", app.requireUser(), app.requireCSRF(), app.requireRole("secretary"), app.rejectQuestionFileVersion)
+	router.POST("/questions/:id/internal-review/start", app.requireUser(), app.requireCSRF(), app.requireRole("secretary"), app.startInternalReview)
+	router.POST("/questions/:id/internal-review/respond", app.requireUser(), app.requireCSRF(), app.requireInternalApprover(), app.respondInternalReview)
+	router.POST("/questions/:id/internal-review/visas/:visaID/withdraw", app.requireUser(), app.requireCSRF(), app.requireInternalApprover(), app.withdrawInternalVisa)
+	router.POST("/questions/:id/internal-review/extend", app.requireUser(), app.requireCSRF(), app.requireRole("secretary"), app.extendInternalReview)
+	router.POST("/questions/:id/internal-review/cancel", app.requireUser(), app.requireCSRF(), app.requireRole("secretary"), app.cancelInternalReview)
 	router.GET("/storage/check", app.requireUser(), app.checkStorage)
 	router.POST("/documents", app.requireUser(), app.requireCSRF(), app.createDocument)
 	router.GET("/documents/:id", app.requireUser(), app.showDocument)
@@ -323,6 +328,65 @@ func (app *application) migrate(ctx context.Context) error {
 			END IF;
 		END;
 		$$;
+
+		CREATE TABLE IF NOT EXISTS internal_review_rounds (
+			id BIGSERIAL PRIMARY KEY,
+			question_id BIGINT NOT NULL REFERENCES questions(id),
+			status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'completed', 'cancelled')),
+			deadline DATE NOT NULL,
+			outcome TEXT CHECK (outcome IS NULL OR outcome IN ('ready_for_committee', 'revision_required')),
+			started_by BIGINT NOT NULL REFERENCES users(id),
+			started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			completed_at TIMESTAMPTZ,
+			cancelled_at TIMESTAMPTZ,
+			CHECK (
+				(status = 'active' AND outcome IS NULL AND completed_at IS NULL AND cancelled_at IS NULL)
+				OR (status = 'completed' AND outcome IS NOT NULL AND completed_at IS NOT NULL AND cancelled_at IS NULL)
+				OR (status = 'cancelled' AND outcome IS NULL AND completed_at IS NULL AND cancelled_at IS NOT NULL)
+			)
+		);
+
+		CREATE UNIQUE INDEX IF NOT EXISTS internal_review_rounds_one_active_idx
+			ON internal_review_rounds(question_id) WHERE status = 'active';
+		CREATE INDEX IF NOT EXISTS internal_review_rounds_question_idx
+			ON internal_review_rounds(question_id, started_at DESC, id DESC);
+
+		CREATE TABLE IF NOT EXISTS internal_review_requirements (
+			id BIGSERIAL PRIMARY KEY,
+			round_id BIGINT NOT NULL REFERENCES internal_review_rounds(id),
+			question_file_id BIGINT NOT NULL,
+			version_no INTEGER NOT NULL,
+			internal_service TEXT NOT NULL CHECK (internal_service IN ('legal', 'finance', 'construction', 'security')),
+			status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'responded', 'superseded')),
+			UNIQUE (round_id, question_file_id, version_no, internal_service),
+			FOREIGN KEY (question_file_id, version_no)
+				REFERENCES question_file_versions(question_file_id, version_no)
+		);
+
+		CREATE INDEX IF NOT EXISTS internal_review_requirements_round_idx
+			ON internal_review_requirements(round_id, question_file_id, internal_service);
+
+		CREATE TABLE IF NOT EXISTS internal_review_visas (
+			id BIGSERIAL PRIMARY KEY,
+			requirement_id BIGINT NOT NULL REFERENCES internal_review_requirements(id),
+			decision TEXT NOT NULL CHECK (decision IN ('approved', 'approved_with_comments', 'rejected', 'no_comments_without_review')),
+			comment TEXT NOT NULL DEFAULT '',
+			decided_by BIGINT NOT NULL REFERENCES users(id),
+			decided_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			withdrawn_by BIGINT REFERENCES users(id),
+			withdrawn_at TIMESTAMPTZ,
+			source_visa_id BIGINT REFERENCES internal_review_visas(id),
+			CHECK ((withdrawn_by IS NULL AND withdrawn_at IS NULL) OR (withdrawn_by IS NOT NULL AND withdrawn_at IS NOT NULL)),
+			CHECK (
+				decision NOT IN ('approved_with_comments', 'rejected')
+				OR length(btrim(comment)) > 0
+			)
+		);
+
+		CREATE UNIQUE INDEX IF NOT EXISTS internal_review_visas_one_active_idx
+			ON internal_review_visas(requirement_id) WHERE withdrawn_at IS NULL;
+		CREATE INDEX IF NOT EXISTS internal_review_visas_requirement_idx
+			ON internal_review_visas(requirement_id, decided_at DESC, id DESC);
 
 		CREATE TABLE IF NOT EXISTS audit_events (
 			id BIGSERIAL PRIMARY KEY,
