@@ -153,6 +153,37 @@ func TestOnlySecretaryCanCreateQuestion(t *testing.T) {
 	}
 }
 
+func TestQuestionFileUploaderRoles(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for _, test := range []struct {
+		name       string
+		user       user
+		wantStatus int
+	}{
+		{name: "secretary", user: user{Role: "secretary"}, wantStatus: http.StatusNoContent},
+		{name: "assigned approver", user: user{Role: "approver", InternalService: "legal"}, wantStatus: http.StatusNoContent},
+		{name: "unassigned approver", user: user{Role: "approver"}, wantStatus: http.StatusForbidden},
+		{name: "administrator", user: user{Role: "admin"}, wantStatus: http.StatusForbidden},
+		{name: "committee member", user: user{Role: "committee"}, wantStatus: http.StatusForbidden},
+		{name: "observer", user: user{Role: "observer"}, wantStatus: http.StatusForbidden},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			app := &application{}
+			router := gin.New()
+			router.POST("/questions/1/files", func(c *gin.Context) {
+				c.Set("user", test.user)
+			}, app.requireQuestionFileUploader(), func(c *gin.Context) {
+				c.Status(http.StatusNoContent)
+			})
+			response := httptest.NewRecorder()
+			router.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/questions/1/files", nil))
+			if response.Code != test.wantStatus {
+				t.Fatalf("status=%d, want %d", response.Code, test.wantStatus)
+			}
+		})
+	}
+}
+
 func TestEveryPostFormContainsCSRFToken(t *testing.T) {
 	formPattern := regexp.MustCompile(`(?s)<form\b[^>]*method="post"[^>]*>.*?</form>`)
 	files, err := filepath.Glob("templates/*.html")

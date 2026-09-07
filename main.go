@@ -42,6 +42,7 @@ type user struct {
 	Email              string
 	FullName           string
 	Role               string
+	InternalService    string
 	MustChangePassword bool
 }
 
@@ -99,6 +100,11 @@ func main() {
 	router.GET("/", app.requireUser(), app.dashboard)
 	router.POST("/questions", app.requireUser(), app.requireCSRF(), app.requireRole("secretary"), app.createQuestion)
 	router.GET("/questions/:id", app.requireUser(), app.showQuestion)
+	router.POST("/questions/:id/files", app.requireUser(), app.requireCSRF(), app.requireQuestionFileUploader(), app.uploadQuestionFile)
+	router.POST("/questions/:id/files/:fileID/versions", app.requireUser(), app.requireCSRF(), app.requireQuestionFileUploader(), app.uploadQuestionFileVersion)
+	router.GET("/questions/:id/files/:fileID/versions/:version/download", app.requireUser(), app.downloadQuestionFileVersion)
+	router.POST("/questions/:id/files/:fileID/versions/:version/confirm", app.requireUser(), app.requireCSRF(), app.requireRole("secretary"), app.confirmQuestionFileVersion)
+	router.POST("/questions/:id/files/:fileID/versions/:version/reject", app.requireUser(), app.requireCSRF(), app.requireRole("secretary"), app.rejectQuestionFileVersion)
 	router.GET("/storage/check", app.requireUser(), app.checkStorage)
 	router.POST("/documents", app.requireUser(), app.requireCSRF(), app.createDocument)
 	router.GET("/documents/:id", app.requireUser(), app.showDocument)
@@ -256,6 +262,68 @@ func (app *application) migrate(ctx context.Context) error {
 		CREATE INDEX IF NOT EXISTS questions_updated_at_idx ON questions(updated_at DESC, id DESC);
 		CREATE INDEX IF NOT EXISTS questions_status_idx ON questions(status, updated_at DESC);
 
+		CREATE TABLE IF NOT EXISTS question_files (
+			id BIGSERIAL PRIMARY KEY,
+			question_id BIGINT NOT NULL REFERENCES questions(id),
+			title TEXT NOT NULL CHECK (length(btrim(title)) BETWEEN 1 AND 250),
+			category TEXT NOT NULL CHECK (category IN (
+				'contract', 'terms_summary', 'lna_draft', 'appendix',
+				'explanatory_note', 'calculation', 'schedule', 'other'
+			)),
+			status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'excluded')),
+			current_version_no INTEGER CHECK (current_version_no > 0),
+			created_by BIGINT NOT NULL REFERENCES users(id),
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		);
+
+		CREATE INDEX IF NOT EXISTS question_files_question_idx
+			ON question_files(question_id, created_at, id);
+		ALTER TABLE question_files ALTER COLUMN current_version_no DROP DEFAULT;
+		ALTER TABLE question_files ALTER COLUMN current_version_no DROP NOT NULL;
+		UPDATE question_files SET current_version_no = NULL WHERE current_version_no = 0;
+
+		CREATE TABLE IF NOT EXISTS question_file_versions (
+			id BIGSERIAL PRIMARY KEY,
+			question_file_id BIGINT NOT NULL REFERENCES question_files(id),
+			version_no INTEGER NOT NULL CHECK (version_no > 0),
+			object_key TEXT NOT NULL UNIQUE,
+			s3_version_id TEXT,
+			original_filename TEXT NOT NULL,
+			content_type TEXT NOT NULL,
+			size_bytes BIGINT NOT NULL CHECK (size_bytes > 0),
+			uploaded_by BIGINT NOT NULL REFERENCES users(id),
+			approval_status TEXT NOT NULL CHECK (approval_status IN ('pending', 'confirmed', 'rejected')),
+			reviewed_by BIGINT REFERENCES users(id),
+			reviewed_at TIMESTAMPTZ,
+			rejection_reason TEXT NOT NULL DEFAULT '',
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			UNIQUE (question_file_id, version_no),
+			CHECK (
+				(approval_status = 'pending' AND reviewed_by IS NULL AND reviewed_at IS NULL AND rejection_reason = '')
+				OR (approval_status = 'confirmed' AND reviewed_by IS NOT NULL AND reviewed_at IS NOT NULL AND rejection_reason = '')
+				OR (approval_status = 'rejected' AND reviewed_by IS NOT NULL AND reviewed_at IS NOT NULL AND length(btrim(rejection_reason)) > 0)
+			)
+		);
+
+		CREATE INDEX IF NOT EXISTS question_file_versions_file_idx
+			ON question_file_versions(question_file_id, version_no DESC);
+		CREATE UNIQUE INDEX IF NOT EXISTS question_file_versions_one_pending_idx
+			ON question_file_versions(question_file_id) WHERE approval_status = 'pending';
+		DO $$
+		BEGIN
+			IF NOT EXISTS (
+				SELECT 1 FROM pg_constraint
+				WHERE conname = 'question_files_current_version_fk'
+				  AND conrelid = 'question_files'::regclass
+			) THEN
+				ALTER TABLE question_files ADD CONSTRAINT question_files_current_version_fk
+					FOREIGN KEY (id, current_version_no)
+					REFERENCES question_file_versions(question_file_id, version_no);
+			END IF;
+		END;
+		$$;
+
 		CREATE TABLE IF NOT EXISTS audit_events (
 			id BIGSERIAL PRIMARY KEY,
 			actor_user_id BIGINT NOT NULL,
@@ -384,10 +452,10 @@ func (app *application) login(c *gin.Context) {
 	var usr user
 	var passwordHash string
 	err := app.db.QueryRow(c.Request.Context(), `
-		SELECT id, email, full_name, role, must_change_password, COALESCE(password_hash, '')
+		SELECT id, email, full_name, role, COALESCE(internal_service, ''), must_change_password, COALESCE(password_hash, '')
 		FROM users
 		WHERE email = $1 AND active = TRUE
-	`, email).Scan(&usr.ID, &usr.Email, &usr.FullName, &usr.Role, &usr.MustChangePassword, &passwordHash)
+	`, email).Scan(&usr.ID, &usr.Email, &usr.FullName, &usr.Role, &usr.InternalService, &usr.MustChangePassword, &passwordHash)
 	if err != nil || !verifyPassword(password, passwordHash) {
 		app.loginLimiter.failure(limiterKey, time.Now())
 		c.HTML(http.StatusUnauthorized, "login.html", gin.H{
@@ -498,13 +566,13 @@ func (app *application) currentUser(c *gin.Context) (user, bool) {
 
 	var usr user
 	err = app.db.QueryRow(c.Request.Context(), `
-		SELECT u.id, u.email, u.full_name, u.role, u.must_change_password
+		SELECT u.id, u.email, u.full_name, u.role, COALESCE(u.internal_service, ''), u.must_change_password
 		FROM sessions s
 		JOIN users u ON u.id = s.user_id
 		WHERE s.token_hash = $1
 		  AND s.expires_at > NOW()
 		  AND u.active = TRUE
-	`, app.sessionDigest(token)).Scan(&usr.ID, &usr.Email, &usr.FullName, &usr.Role, &usr.MustChangePassword)
+	`, app.sessionDigest(token)).Scan(&usr.ID, &usr.Email, &usr.FullName, &usr.Role, &usr.InternalService, &usr.MustChangePassword)
 	if err != nil {
 		if !errors.Is(err, pgx.ErrNoRows) {
 			log.Printf("read session: %v", err)

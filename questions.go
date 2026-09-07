@@ -231,9 +231,17 @@ func (app *application) showQuestion(c *gin.Context) {
 	detail.AmountLabel = strings.TrimRight(strings.TrimRight(amount, "0"), ".")
 	detail.CreatedLabel = createdAt.Format("02.01.2006 15:04")
 	detail.HasTransactionData = questionType == "transaction"
+	files, err := app.loadQuestionFiles(c.Request.Context(), questionID, usr)
+	if err != nil {
+		c.String(http.StatusInternalServerError, "Не удалось загрузить комплект файлов")
+		return
+	}
+	canUpload := canUploadQuestionFiles(usr)
+	canUpload = canUpload && (status == "draft" || status == "internal_review" || status == "revision_required")
 
 	c.HTML(http.StatusOK, "question.html", gin.H{
 		"Title": detail.Title, "User": usr, "CSRFToken": app.templateCSRF(c), "Question": detail,
+		"Files": files, "CanUploadFiles": canUpload,
 	})
 }
 

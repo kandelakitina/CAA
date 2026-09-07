@@ -198,20 +198,23 @@ func parseAuditFilters(c *gin.Context) (auditFilters, error) {
 
 func auditEventLabel(eventType string) string {
 	labels := map[string]string{
-		"session.login":               "Вход в систему",
-		"session.logout":              "Выход из системы",
-		"user.created":                "Создан пользователь",
-		"user.password_reset":         "Сброшен пароль пользователя",
-		"user.deactivated":            "Отключён пользователь",
-		"user.password_changed":       "Изменён собственный пароль",
-		"user.assignment_updated":     "Обновлено назначение пользователя",
-		"question.created":            "Создан вопрос",
-		"document.created":            "Создан документ",
-		"document.version_uploaded":   "Загружена версия документа",
-		"approval.started":            "Запущено согласование",
-		"approval.response_submitted": "Отправлено решение",
-		"approval.completed":          "Завершено согласование",
-		"approval.cancelled":          "Отменено согласование",
+		"session.login":                   "Вход в систему",
+		"session.logout":                  "Выход из системы",
+		"user.created":                    "Создан пользователь",
+		"user.password_reset":             "Сброшен пароль пользователя",
+		"user.deactivated":                "Отключён пользователь",
+		"user.password_changed":           "Изменён собственный пароль",
+		"user.assignment_updated":         "Обновлено назначение пользователя",
+		"question.created":                "Создан вопрос",
+		"question.file_version_uploaded":  "Загружена версия файла вопроса",
+		"question.file_version_confirmed": "Подтверждена версия файла вопроса",
+		"question.file_version_rejected":  "Отклонена версия файла вопроса",
+		"document.created":                "Создан документ",
+		"document.version_uploaded":       "Загружена версия документа",
+		"approval.started":                "Запущено согласование",
+		"approval.response_submitted":     "Отправлено решение",
+		"approval.completed":              "Завершено согласование",
+		"approval.cancelled":              "Отменено согласование",
 	}
 	if label, ok := labels[eventType]; ok {
 		return label

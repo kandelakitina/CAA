@@ -82,6 +82,22 @@ button:hover { background: #7890ff; }
 .question-text h2 { margin: 0 0 0.75rem; font-size: 1.2rem; }
 .question-text p { margin: 0; color: #cbd5e1; line-height: 1.65; white-space: pre-wrap; }
 .question-next-step { margin-top: 1.5rem; }
+.question-materials { display: grid; gap: 1rem; margin-top: 2rem; }
+.question-materials h2, .question-file-card h3 { margin: 0; }
+.question-file-list { display: grid; gap: 1rem; }
+.question-file-card { display: grid; gap: 1rem; padding: 1.1rem; border: 1px solid #33445f; border-radius: 1rem; background: rgba(12, 22, 39, 0.55); }
+.file-category { display: inline-block; margin-top: 0.35rem; color: #8393ab; font-size: 0.86rem; }
+.compact-panel { margin: 0; }
+.version-state, .current-badge { padding: 0.25rem 0.5rem; border-radius: 999px; font-size: 0.76rem; font-weight: 800; }
+.version-state--confirmed, .current-badge { background: rgba(74, 222, 128, 0.14); color: #86efac; }
+.version-state--pending { background: rgba(250, 204, 21, 0.14); color: #fde047; }
+.version-state--rejected { background: rgba(248, 113, 113, 0.14); color: #fca5a5; }
+.version-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 0.65rem; }
+.version-actions form { margin: 0; }
+.reject-panel { position: relative; }
+.reject-panel summary { cursor: pointer; color: #fca5a5; font-weight: 800; }
+.reject-panel form { min-width: min(22rem, 70vw); margin-top: 0.65rem; padding: 0.8rem; border: 1px solid #33445f; border-radius: 0.75rem; background: #101c30; }
+.rejection-reason { margin: 0.6rem 0 0; color: #fca5a5; white-space: pre-wrap; }
 .form-hint { margin: 0; color: #8fa0b8; font-size: 0.9rem; }
 .section-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; margin: 2rem 0 1rem; }
 .section-heading h2 { margin: 0; }

@@ -37,7 +37,84 @@
       {{ end }}
       <section class="question-text"><h2>Формулировка решения</h2><p>{{ .Question.DecisionText }}</p></section>
       {{ if .Question.Summary }}<section class="question-text"><h2>Краткое описание материалов</h2><p>{{ .Question.Summary }}</p></section>{{ end }}
-      <div class="empty-state question-next-step"><strong>Комплект файлов ещё не подключён</strong><span>Загрузка нескольких файлов и их независимые версии будут реализованы следующим этапом.</span></div>
+
+	  <section class="question-materials">
+		<div class="section-heading"><div><p class="eyebrow">Материалы</p><h2>Комплект файлов</h2></div></div>
+		{{ if .CanUploadFiles }}
+		<details class="upload-panel">
+		  <summary>Добавить файл в комплект</summary>
+		  <form class="form-stack upload-form" method="post" action="/questions/{{ .Question.ID }}/files" enctype="multipart/form-data">
+			<input type="hidden" name="_csrf" value="{{ .CSRFToken }}">
+			<label>Название материала<input name="title" maxlength="250" required></label>
+			<label>Категория
+			  <select name="category" required>
+				<option value="">Выберите категорию</option>
+				<option value="contract">Основной договор</option>
+				<option value="terms_summary">Справка об основных условиях</option>
+				<option value="lna_draft">Проект ЛНА</option>
+				<option value="appendix">Приложение</option>
+				<option value="explanatory_note">Пояснительная записка</option>
+				<option value="calculation">Расчёт</option>
+				<option value="schedule">График</option>
+				<option value="other">Другой материал</option>
+			  </select>
+			</label>
+			<label>Файл, не более 25 МБ<input type="file" name="file" accept=".doc,.docx,.xls,.xlsx,.pdf" required></label>
+			<button type="submit">Загрузить</button>
+		  </form>
+		</details>
+		{{ end }}
+
+		{{ if .Files }}
+		<div class="question-file-list">
+		  {{ range .Files }}{{ $file := . }}
+		  <article class="question-file-card">
+			<div class="document-heading"><div><h3>{{ .Title }}</h3><span class="file-category">{{ .CategoryLabel }}</span></div>{{ if gt .CurrentVersionNo 0 }}<span class="status-pill">Версия {{ .CurrentVersionNo }}</span>{{ end }}</div>
+			{{ if and $.CanUploadFiles (not .HasPending) }}
+			<details class="upload-panel compact-panel">
+			  <summary>Загрузить новую версию</summary>
+			  <form class="form-stack" method="post" action="/questions/{{ $.Question.ID }}/files/{{ .ID }}/versions" enctype="multipart/form-data">
+				<input type="hidden" name="_csrf" value="{{ $.CSRFToken }}">
+				<label>Файл, не более 25 МБ<input type="file" name="file" accept=".doc,.docx,.xls,.xlsx,.pdf" required></label>
+				<button type="submit">Загрузить версию</button>
+			  </form>
+			</details>
+			{{ else if .HasPending }}<p class="form-hint">Новая загрузка станет доступна после решения секретаря по ожидающей версии.</p>
+			{{ end }}
+			<div class="version-list">
+			  {{ range .Versions }}
+			  <div class="version-row">
+				<div class="version-number">v{{ .VersionNo }}</div>
+				<div class="version-main">
+				  <div class="version-title"><strong>{{ .Filename }}</strong><span class="version-state version-state--{{ .Status }}">{{ .StatusLabel }}</span>{{ if .IsCurrent }}<span class="current-badge">Текущая</span>{{ end }}</div>
+				  <div class="document-meta"><span>{{ .SizeLabel }}</span><span>{{ .UploadedBy }}</span><span>{{ .CreatedLabel }}</span></div>
+				  {{ if .RejectionReason }}<p class="rejection-reason">Причина: {{ .RejectionReason }}</p>{{ end }}
+				</div>
+				<div class="version-actions">
+				  <a class="text-link" href="/questions/{{ $.Question.ID }}/files/{{ $file.ID }}/versions/{{ .VersionNo }}/download">Скачать</a>
+				  {{ if .CanReview }}
+				  <form method="post" action="/questions/{{ $.Question.ID }}/files/{{ $file.ID }}/versions/{{ .VersionNo }}/confirm">
+					<input type="hidden" name="_csrf" value="{{ $.CSRFToken }}"><button type="submit">Подтвердить</button>
+				  </form>
+				  <details class="reject-panel"><summary>Отклонить</summary>
+					<form class="form-stack" method="post" action="/questions/{{ $.Question.ID }}/files/{{ $file.ID }}/versions/{{ .VersionNo }}/reject">
+					  <input type="hidden" name="_csrf" value="{{ $.CSRFToken }}">
+					  <label>Причина<textarea name="reason" rows="2" maxlength="2000" required></textarea></label>
+					  <button type="submit" class="button-danger">Отклонить версию</button>
+					</form>
+				  </details>
+				  {{ end }}
+				</div>
+			  </div>
+			  {{ end }}
+			</div>
+		  </article>
+		  {{ end }}
+		</div>
+		{{ else }}
+		<div class="empty-state question-next-step"><strong>Комплект пока пуст</strong><span>Добавьте первый официальный файл вопроса.</span></div>
+		{{ end }}
+	  </section>
     </section>
   </main>
 </body>
