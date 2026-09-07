@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ .Title }}</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  <header class="topbar">
+    <div><p class="eyebrow">Neva Concert Hall</p><strong>Корпоративные согласования</strong></div>
+    <div class="account">
+      {{ if eq .User.Role "admin" }}<a class="nav-link" href="/admin/users">Пользователи</a><a class="nav-link" href="/admin/audit">Аудит</a>{{ end }}
+      <a class="nav-link" href="/password/change">Пароль</a>
+      <span>{{ .User.FullName }}</span><span class="role">{{ .User.Role }}</span>
+      <form method="post" action="/logout"><input type="hidden" name="_csrf" value="{{ .CSRFToken }}"><button type="submit" class="button-secondary">Выйти</button></form>
+    </div>
+  </header>
+  <main class="content">
+    <section class="card dashboard-card">
+      <a class="back-link" href="/">← Все вопросы</a>
+      <div class="detail-heading">
+        <div><p class="eyebrow">Вопрос №{{ .Question.ID }}</p><h1>{{ .Question.Title }}</h1></div>
+        <span class="status-pill">{{ .Question.StatusLabel }}</span>
+      </div>
+      <div class="question-facts">
+        <div><span>Тип</span><strong>{{ .Question.TypeLabel }}</strong></div>
+        {{ if .Question.SubtypeLabel }}<div><span>Подтип</span><strong>{{ .Question.SubtypeLabel }}</strong></div>{{ end }}
+        <div><span>Срок внутреннего согласования</span><strong>{{ .Question.DeadlineLabel }}</strong></div>
+        <div><span>Создал</span><strong>{{ .Question.CreatedBy }}</strong><small>{{ .Question.CreatedLabel }}</small></div>
+      </div>
+      {{ if .Question.HasTransactionData }}
+      <div class="question-facts">
+        <div><span>Контрагент</span><strong>{{ .Question.Counterparty }}</strong></div>
+        <div><span>Сумма</span><strong>{{ .Question.AmountLabel }} {{ .Question.Currency }}</strong></div>
+      </div>
+      {{ end }}
+      <section class="question-text"><h2>Формулировка решения</h2><p>{{ .Question.DecisionText }}</p></section>
+      {{ if .Question.Summary }}<section class="question-text"><h2>Краткое описание материалов</h2><p>{{ .Question.Summary }}</p></section>{{ end }}
+      <div class="empty-state question-next-step"><strong>Комплект файлов ещё не подключён</strong><span>Загрузка нескольких файлов и их независимые версии будут реализованы следующим этапом.</span></div>
+    </section>
+  </main>
+</body>
+</html>

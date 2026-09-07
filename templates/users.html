@@ -13,7 +13,7 @@
       <strong>Корпоративные согласования</strong>
     </div>
     <div class="account">
-      <a class="nav-link" href="/">Документы</a>
+	  <a class="nav-link" href="/">Вопросы</a>
       <a class="nav-link" href="/admin/audit">Аудит</a>
       <a class="nav-link" href="/password/change">Пароль</a>
       <span>{{ .User.FullName }}</span>
@@ -42,15 +42,29 @@
             Электронная почта — логин
             <input type="email" name="email" value="{{ .Email }}" maxlength="320" required autocomplete="off">
           </label>
-          <label>
-            Роль
+		  <label>
+			Роль
             <select name="role" required>
               <option value="committee" {{ if eq .SelectedRole "committee" }}selected{{ end }}>Член комитета</option>
               <option value="approver" {{ if eq .SelectedRole "approver" }}selected{{ end }}>Согласующий</option>
               <option value="secretary" {{ if eq .SelectedRole "secretary" }}selected{{ end }}>Секретарь</option>
               <option value="observer" {{ if eq .SelectedRole "observer" }}selected{{ end }}>Наблюдатель</option>
-            </select>
-          </label>
+			</select>
+		  </label>
+		  <label>
+			Дирекция — обязательно для согласующего
+			<select name="internal_service">
+			  <option value="">Не применяется</option>
+			  <option value="legal" {{ if eq .SelectedService "legal" }}selected{{ end }}>Юридическая дирекция</option>
+			  <option value="finance" {{ if eq .SelectedService "finance" }}selected{{ end }}>Финансовая дирекция</option>
+			  <option value="construction" {{ if eq .SelectedService "construction" }}selected{{ end }}>Строительная дирекция</option>
+			  <option value="security" {{ if eq .SelectedService "security" }}selected{{ end }}>Дирекция по безопасности</option>
+			</select>
+		  </label>
+		  <label class="check-row">
+			<input type="checkbox" name="is_committee_chair" value="1" {{ if .SelectedChair }}checked{{ end }}>
+			<span><strong>Председатель Комитета</strong><small>Применяется только к члену Комитета</small></span>
+		  </label>
           <label>
             Временный пароль — не менее 8 символов
             <input type="password" name="temporary_password" minlength="8" required autocomplete="new-password">
@@ -71,14 +85,38 @@
             <strong>{{ .FullName }}</strong>
             <span>{{ .Email }}</span>
           </div>
-          <div class="user-flags">
-            <span class="status-pill">{{ .RoleLabel }}</span>
+		  <div class="user-flags">
+			<span class="status-pill">{{ .RoleLabel }}</span>
+			{{ if eq .Role "approver" }}<span class="status-pill">{{ .ServiceLabel }}</span>{{ end }}
+			{{ if .IsCommitteeChair }}<span class="status-pill">Председатель Комитета</span>{{ end }}
             {{ if .MustChangePassword }}<span class="temporary-pill">Временный пароль</span>{{ end }}
             {{ if not .Active }}<span class="inactive-pill">Удалён</span>{{ end }}
           </div>
-          <span class="created-label">с {{ .CreatedLabel }}</span>
-          {{ if and .Active (not .IsCurrent) }}
-          <details class="reset-panel" {{ if eq $.ResetUserID .ID }}open{{ end }}>
+		  <span class="created-label">с {{ .CreatedLabel }}</span>
+		  {{ if and .Active (not .IsCurrent) }}
+		  {{ if or (eq .Role "approver") (eq .Role "committee") }}
+		  <details class="reset-panel" {{ if eq $.AssignmentUserID .ID }}open{{ end }}>
+			<summary>Настроить назначение</summary>
+			<form class="form-stack reset-form" method="post" action="/admin/users/{{ .ID }}/assignment">
+			  <input type="hidden" name="_csrf" value="{{ $.CSRFToken }}">
+			  {{ if eq .Role "approver" }}
+			  <label>Дирекция
+				<select name="internal_service" required>
+				  <option value="">Выберите дирекцию</option>
+				  <option value="legal" {{ if eq .InternalService "legal" }}selected{{ end }}>Юридическая дирекция</option>
+				  <option value="finance" {{ if eq .InternalService "finance" }}selected{{ end }}>Финансовая дирекция</option>
+				  <option value="construction" {{ if eq .InternalService "construction" }}selected{{ end }}>Строительная дирекция</option>
+				  <option value="security" {{ if eq .InternalService "security" }}selected{{ end }}>Дирекция по безопасности</option>
+				</select>
+			  </label>
+			  {{ else }}
+			  <label class="check-row"><input type="checkbox" name="is_committee_chair" value="1" {{ if .IsCommitteeChair }}checked{{ end }}><span><strong>Председатель Комитета</strong><small>В системе может быть только один активный председатель</small></span></label>
+			  {{ end }}
+			  <button type="submit">Сохранить назначение</button>
+			</form>
+		  </details>
+		  {{ end }}
+		  <details class="reset-panel" {{ if eq $.ResetUserID .ID }}open{{ end }}>
             <summary>Сбросить пароль</summary>
             <form class="form-stack reset-form" method="post" action="/admin/users/{{ .ID }}/reset-password">
               <input type="hidden" name="_csrf" value="{{ $.CSRFToken }}">

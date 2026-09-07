@@ -25,12 +25,76 @@
   <main class="content">
     <section class="card dashboard-card">
       <p class="eyebrow">Закрытый кабинет</p>
-      <h1>Документы</h1>
-      <p class="lead">Закрытый реестр материалов Комитета. Сейчас доступна загрузка и скачивание первой версии документа.</p>
+	  <h1>Вопросы Комитета</h1>
+	  <p class="lead">Новый процесс начинается с карточки вопроса. Комплекты файлов и внутреннее согласование будут добавлены следующим этапом.</p>
 
       {{ if .Error }}<div class="alert">{{ .Error }}</div>{{ end }}
 
-      {{ if or (eq .User.Role "admin") (eq .User.Role "secretary") }}
+	  {{ if eq .User.Role "secretary" }}
+	  <details class="upload-panel" {{ if .Error }}open{{ end }}>
+		<summary>Создать вопрос</summary>
+		<form class="form-stack upload-form" method="post" action="/questions">
+		  <input type="hidden" name="_csrf" value="{{ .CSRFToken }}">
+		  <label>
+			Тип вопроса
+			<select name="question_type" required>
+			  <option value="">Выберите тип</option>
+			  <option value="budget" {{ if eq .Question.QuestionType "budget" }}selected{{ end }}>Бюджет</option>
+			  <option value="internal_document" {{ if eq .Question.QuestionType "internal_document" }}selected{{ end }}>Внутренний документ / ЛНА</option>
+			  <option value="transaction" {{ if eq .Question.QuestionType "transaction" }}selected{{ end }}>Сделка / договор</option>
+			  <option value="kpi" {{ if eq .Question.QuestionType "kpi" }}selected{{ end }}>КПЭ</option>
+			  <option value="board_other" {{ if eq .Question.QuestionType "board_other" }}selected{{ end }}>Иной вопрос компетенции Совета директоров</option>
+			  <option value="organizational" {{ if eq .Question.QuestionType "organizational" }}selected{{ end }}>Организационный вопрос</option>
+			  <option value="other" {{ if eq .Question.QuestionType "other" }}selected{{ end }}>Другое</option>
+			</select>
+		  </label>
+		  <label>Короткое название<input name="title" maxlength="250" required value="{{ .Question.Title }}"></label>
+		  <label>Формулировка решения<textarea name="decision_text" rows="5" maxlength="10000" required>{{ .Question.DecisionText }}</textarea></label>
+		  <label>Краткое описание материалов — необязательно<textarea name="summary" rows="3" maxlength="5000">{{ .Question.Summary }}</textarea></label>
+		  <label>Срок внутреннего согласования<input type="date" name="internal_deadline" required value="{{ .Question.InternalDeadline }}"></label>
+		  <fieldset class="question-contract-fields">
+			<legend>Только для сделки или договора</legend>
+			<label>Подтип
+			  <select name="transaction_subtype">
+				<option value="">Не применяется</option>
+				<option value="purchase" {{ if eq .Question.TransactionType "purchase" }}selected{{ end }}>Закупочный</option>
+				<option value="financial" {{ if eq .Question.TransactionType "financial" }}selected{{ end }}>Финансовый</option>
+			  </select>
+			</label>
+			<label>Контрагент<input name="counterparty" maxlength="500" value="{{ .Question.Counterparty }}"></label>
+			<div class="question-money-fields">
+			  <label>Сумма<input name="amount" inputmode="decimal" placeholder="1000000.00" value="{{ .Question.Amount }}"></label>
+			  <label>Валюта<input name="currency" maxlength="3" placeholder="RUB" value="{{ .Question.Currency }}"></label>
+			</div>
+		  </fieldset>
+		  <button type="submit">Создать черновик</button>
+		</form>
+	  </details>
+	  {{ end }}
+
+	  {{ if .Questions }}
+	  <div class="document-list">
+		{{ range .Questions }}
+		<article class="document-row">
+		  <div class="document-main">
+			<div class="document-heading"><h2><a class="title-link" href="/questions/{{ .ID }}">{{ .Title }}</a></h2><span class="status-pill">{{ .StatusLabel }}</span></div>
+			<div class="document-meta"><span>{{ .TypeLabel }}</span><span>Срок: {{ .DeadlineLabel }}</span><span>Обновлён: {{ .UpdatedLabel }}</span></div>
+		  </div>
+		  <a class="button-link" href="/questions/{{ .ID }}">Открыть</a>
+		</article>
+		{{ end }}
+	  </div>
+	  {{ else }}
+	  <div class="empty-state"><strong>Вопросов пока нет</strong><span>Секретарь может создать первый черновик.</span></div>
+	  {{ end }}
+	</section>
+
+	<section class="card dashboard-card legacy-section">
+	  <p class="eyebrow">Действующая версия</p>
+	  <h2>Документы старого процесса</h2>
+	  <p class="lead">Существующие документы и согласования сохранены и продолжают работать.</p>
+
+	  {{ if or (eq .User.Role "admin") (eq .User.Role "secretary") }}
       <details class="upload-panel">
         <summary>Добавить документ</summary>
         <form class="form-stack upload-form" method="post" action="/documents" enctype="multipart/form-data">
@@ -83,7 +147,7 @@
       </div>
       {{ end }}
 
-      <div class="storage-check">
+	  <div class="storage-check">
         <button
           type="button"
           hx-get="/storage/check"
@@ -93,8 +157,8 @@
           Проверить подключение S3
         </button>
         <div id="storage-check-result" aria-live="polite"></div>
-      </div>
-    </section>
+	  </div>
+	</section>
   </main>
 </body>
 </html>

@@ -10,7 +10,7 @@
   <header class="topbar">
     <div><p class="eyebrow">Neva Concert Hall</p><strong>Корпоративные согласования</strong></div>
     <div class="account">
-      <a class="nav-link" href="/">Документы</a>
+	  <a class="nav-link" href="/">Вопросы</a>
       <a class="nav-link" href="/admin/users">Пользователи</a>
       <a class="nav-link" href="/password/change">Пароль</a>
       <span>{{ .User.FullName }}</span>
@@ -33,7 +33,9 @@
             <option value="user.created" {{ if eq .Filters.EventType "user.created" }}selected{{ end }}>Создание пользователя</option>
             <option value="user.password_reset" {{ if eq .Filters.EventType "user.password_reset" }}selected{{ end }}>Сброс пароля</option>
             <option value="user.password_changed" {{ if eq .Filters.EventType "user.password_changed" }}selected{{ end }}>Смена своего пароля</option>
-            <option value="user.deactivated" {{ if eq .Filters.EventType "user.deactivated" }}selected{{ end }}>Отключение пользователя</option>
+			<option value="user.deactivated" {{ if eq .Filters.EventType "user.deactivated" }}selected{{ end }}>Отключение пользователя</option>
+			<option value="user.assignment_updated" {{ if eq .Filters.EventType "user.assignment_updated" }}selected{{ end }}>Назначение пользователя</option>
+			<option value="question.created" {{ if eq .Filters.EventType "question.created" }}selected{{ end }}>Создание вопроса</option>
             <option value="document.created" {{ if eq .Filters.EventType "document.created" }}selected{{ end }}>Создание документа</option>
             <option value="document.version_uploaded" {{ if eq .Filters.EventType "document.version_uploaded" }}selected{{ end }}>Новая версия</option>
             <option value="approval.started" {{ if eq .Filters.EventType "approval.started" }}selected{{ end }}>Запуск согласования</option>

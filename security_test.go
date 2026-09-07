@@ -124,6 +124,35 @@ func TestRequireRole(t *testing.T) {
 	}
 }
 
+func TestOnlySecretaryCanCreateQuestion(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for _, test := range []struct {
+		role       string
+		wantStatus int
+	}{
+		{role: "secretary", wantStatus: http.StatusNoContent},
+		{role: "admin", wantStatus: http.StatusForbidden},
+		{role: "committee", wantStatus: http.StatusForbidden},
+		{role: "approver", wantStatus: http.StatusForbidden},
+		{role: "observer", wantStatus: http.StatusForbidden},
+	} {
+		t.Run(test.role, func(t *testing.T) {
+			app := &application{}
+			router := gin.New()
+			router.POST("/questions", func(c *gin.Context) {
+				c.Set("user", user{Role: test.role})
+			}, app.requireRole("secretary"), func(c *gin.Context) {
+				c.Status(http.StatusNoContent)
+			})
+			response := httptest.NewRecorder()
+			router.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/questions", nil))
+			if response.Code != test.wantStatus {
+				t.Fatalf("status=%d, want %d", response.Code, test.wantStatus)
+			}
+		})
+	}
+}
+
 func TestEveryPostFormContainsCSRFToken(t *testing.T) {
 	formPattern := regexp.MustCompile(`(?s)<form\b[^>]*method="post"[^>]*>.*?</form>`)
 	files, err := filepath.Glob("templates/*.html")

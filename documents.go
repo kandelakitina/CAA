@@ -65,10 +65,19 @@ type documentUpload struct {
 }
 
 func (app *application) renderDashboard(c *gin.Context, status int, message string) {
+	app.renderDashboardWithQuestion(c, status, message, questionInput{})
+}
+
+func (app *application) renderDashboardWithQuestion(c *gin.Context, status int, message string, values questionInput) {
 	usr := c.MustGet("user").(user)
 	documents, err := app.listDocuments(c.Request.Context())
 	if err != nil {
 		c.String(http.StatusInternalServerError, "Не удалось загрузить реестр документов")
+		return
+	}
+	questions, err := app.listQuestions(c, usr)
+	if err != nil {
+		c.String(http.StatusInternalServerError, "Не удалось загрузить реестр вопросов")
 		return
 	}
 
@@ -76,7 +85,9 @@ func (app *application) renderDashboard(c *gin.Context, status int, message stri
 		"Title":     "Neva Concert Hall Corporate Approvals",
 		"User":      usr,
 		"CSRFToken": app.templateCSRF(c),
+		"Questions": questions,
 		"Documents": documents,
+		"Question":  values,
 		"Error":     message,
 	})
 }

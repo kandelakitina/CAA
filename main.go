@@ -94,8 +94,11 @@ func main() {
 	router.GET("/admin/audit", app.requireUser(), app.requireRole("admin"), app.showAuditLog)
 	router.POST("/admin/users", app.requireUser(), app.requireCSRF(), app.requireRole("admin"), app.createUser)
 	router.POST("/admin/users/:id/reset-password", app.requireUser(), app.requireCSRF(), app.requireRole("admin"), app.resetUserPassword)
+	router.POST("/admin/users/:id/assignment", app.requireUser(), app.requireCSRF(), app.requireRole("admin"), app.updateUserAssignment)
 	router.POST("/admin/users/:id/delete", app.requireUser(), app.requireCSRF(), app.requireRole("admin"), app.deleteUser)
 	router.GET("/", app.requireUser(), app.dashboard)
+	router.POST("/questions", app.requireUser(), app.requireCSRF(), app.requireRole("secretary"), app.createQuestion)
+	router.GET("/questions/:id", app.requireUser(), app.showQuestion)
 	router.GET("/storage/check", app.requireUser(), app.checkStorage)
 	router.POST("/documents", app.requireUser(), app.requireCSRF(), app.createDocument)
 	router.GET("/documents/:id", app.requireUser(), app.showDocument)
@@ -136,6 +139,17 @@ func (app *application) migrate(ctx context.Context) error {
 		UPDATE users SET role = 'approver' WHERE role = 'reviewer';
 		ALTER TABLE users ADD CONSTRAINT users_role_check
 			CHECK (role IN ('admin', 'secretary', 'committee', 'approver', 'observer'));
+		ALTER TABLE users ADD COLUMN IF NOT EXISTS internal_service TEXT;
+		ALTER TABLE users ADD COLUMN IF NOT EXISTS is_committee_chair BOOLEAN NOT NULL DEFAULT FALSE;
+		ALTER TABLE users DROP CONSTRAINT IF EXISTS users_internal_service_role_check;
+		ALTER TABLE users ADD CONSTRAINT users_internal_service_role_check CHECK (
+			internal_service IS NULL OR (
+				role = 'approver' AND internal_service IN ('legal', 'finance', 'construction', 'security')
+			)
+		);
+		ALTER TABLE users DROP CONSTRAINT IF EXISTS users_committee_chair_role_check;
+		ALTER TABLE users ADD CONSTRAINT users_committee_chair_role_check
+			CHECK (NOT is_committee_chair OR role = 'committee');
 
 		CREATE TABLE IF NOT EXISTS sessions (
 			token_hash TEXT PRIMARY KEY,
@@ -208,6 +222,40 @@ func (app *application) migrate(ctx context.Context) error {
 		CREATE INDEX IF NOT EXISTS approval_participants_user_idx
 			ON approval_participants(user_id, round_id);
 
+		CREATE TABLE IF NOT EXISTS questions (
+			id BIGSERIAL PRIMARY KEY,
+			question_type TEXT NOT NULL CHECK (question_type IN (
+				'budget', 'internal_document', 'transaction', 'kpi',
+				'board_other', 'organizational', 'other'
+			)),
+			transaction_subtype TEXT CHECK (transaction_subtype IS NULL OR transaction_subtype IN ('purchase', 'financial')),
+			title TEXT NOT NULL CHECK (length(btrim(title)) BETWEEN 1 AND 250),
+			summary TEXT NOT NULL DEFAULT '',
+			decision_text TEXT NOT NULL CHECK (length(btrim(decision_text)) > 0),
+			internal_deadline DATE NOT NULL,
+			counterparty TEXT NOT NULL DEFAULT '',
+			amount NUMERIC(20, 2),
+			currency TEXT NOT NULL DEFAULT '',
+			status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN (
+				'draft', 'internal_review', 'revision_required', 'ready_for_committee',
+				'committee_voting', 'approved', 'rejected', 'no_quorum', 'cancelled'
+			)),
+			created_by BIGINT NOT NULL REFERENCES users(id),
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			CHECK (
+				(question_type = 'transaction' AND transaction_subtype IS NOT NULL
+					AND length(btrim(counterparty)) > 0 AND amount > 0
+					AND currency ~ '^[A-Z]{3}$')
+				OR
+				(question_type <> 'transaction' AND transaction_subtype IS NULL
+					AND counterparty = '' AND amount IS NULL AND currency = '')
+			)
+		);
+
+		CREATE INDEX IF NOT EXISTS questions_updated_at_idx ON questions(updated_at DESC, id DESC);
+		CREATE INDEX IF NOT EXISTS questions_status_idx ON questions(status, updated_at DESC);
+
 		CREATE TABLE IF NOT EXISTS audit_events (
 			id BIGSERIAL PRIMARY KEY,
 			actor_user_id BIGINT NOT NULL,
@@ -223,6 +271,7 @@ func (app *application) migrate(ctx context.Context) error {
 			details TEXT NOT NULL DEFAULT '',
 			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 		);
+		ALTER TABLE audit_events ADD COLUMN IF NOT EXISTS question_id BIGINT;
 
 		CREATE INDEX IF NOT EXISTS audit_events_created_at_idx
 			ON audit_events(created_at DESC, id DESC);
@@ -230,6 +279,8 @@ func (app *application) migrate(ctx context.Context) error {
 			ON audit_events(actor_user_id, created_at DESC);
 		CREATE INDEX IF NOT EXISTS audit_events_document_idx
 			ON audit_events(document_id, created_at DESC) WHERE document_id IS NOT NULL;
+		CREATE INDEX IF NOT EXISTS audit_events_question_idx
+			ON audit_events(question_id, created_at DESC) WHERE question_id IS NOT NULL;
 
 		CREATE OR REPLACE FUNCTION prevent_audit_event_changes()
 		RETURNS TRIGGER AS $$

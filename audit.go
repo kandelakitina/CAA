@@ -23,6 +23,7 @@ type auditRecord struct {
 	TargetID    *int64
 	TargetLabel string
 	DocumentID  *int64
+	QuestionID  *int64
 	VersionNo   *int
 	Details     string
 }
@@ -59,10 +60,11 @@ func (app *application) writeAudit(ctx context.Context, executor auditExecutor, 
 	_, err := executor.Exec(ctx, `
 		INSERT INTO audit_events (
 			actor_user_id, actor_name, actor_email, actor_role, event_type,
-			target_type, target_id, target_label, document_id, version_no, details
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+			target_type, target_id, target_label, document_id, question_id, version_no, details
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 	`, actor.ID, actor.FullName, actor.Email, actor.Role, record.EventType,
-		record.TargetType, record.TargetID, record.TargetLabel, record.DocumentID, record.VersionNo, record.Details)
+		record.TargetType, record.TargetID, record.TargetLabel, record.DocumentID,
+		record.QuestionID, record.VersionNo, record.Details)
 	return err
 }
 
@@ -75,7 +77,8 @@ func (app *application) showAuditLog(c *gin.Context) {
 
 	rows, err := app.db.Query(c.Request.Context(), `
 		SELECT id, actor_name, actor_email, actor_role, event_type,
-		       target_label, COALESCE(document_id, 0), COALESCE(version_no, 0), details, created_at
+		       target_label, COALESCE(document_id, 0), COALESCE(question_id, 0),
+		       COALESCE(version_no, 0), details, created_at
 		FROM audit_events
 		WHERE ($1 = '' OR event_type = $1)
 		  AND ($2::BIGINT = 0 OR actor_user_id = $2)
@@ -96,10 +99,11 @@ func (app *application) showAuditLog(c *gin.Context) {
 		var item auditListItem
 		var eventType, role string
 		var documentID int64
+		var questionID int64
 		var versionNo int
 		var createdAt time.Time
 		if err := rows.Scan(&item.ID, &item.ActorName, &item.ActorEmail, &role, &eventType,
-			&item.TargetLabel, &documentID, &versionNo, &item.Details, &createdAt); err != nil {
+			&item.TargetLabel, &documentID, &questionID, &versionNo, &item.Details, &createdAt); err != nil {
 			c.String(http.StatusInternalServerError, "Не удалось прочитать журнал аудита")
 			return
 		}
@@ -110,6 +114,9 @@ func (app *application) showAuditLog(c *gin.Context) {
 			if versionNo > 0 {
 				item.ObjectMeta += fmt.Sprintf(" · версия %d", versionNo)
 			}
+		}
+		if questionID > 0 {
+			item.ObjectMeta = fmt.Sprintf("Вопрос №%d", questionID)
 		}
 		item.CreatedAt = createdAt.Format("02.01.2006 15:04:05")
 		events = append(events, item)
@@ -197,6 +204,8 @@ func auditEventLabel(eventType string) string {
 		"user.password_reset":         "Сброшен пароль пользователя",
 		"user.deactivated":            "Отключён пользователь",
 		"user.password_changed":       "Изменён собственный пароль",
+		"user.assignment_updated":     "Обновлено назначение пользователя",
+		"question.created":            "Создан вопрос",
 		"document.created":            "Создан документ",
 		"document.version_uploaded":   "Загружена версия документа",
 		"approval.started":            "Запущено согласование",

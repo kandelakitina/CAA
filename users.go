@@ -18,6 +18,10 @@ type userListItem struct {
 	Email              string
 	FullName           string
 	RoleLabel          string
+	Role               string
+	InternalService    string
+	ServiceLabel       string
+	IsCommitteeChair   bool
 	Active             bool
 	MustChangePassword bool
 	IsCurrent          bool
@@ -41,7 +45,8 @@ func (app *application) requireRole(allowed ...string) gin.HandlerFunc {
 func (app *application) listUsers(c *gin.Context) ([]userListItem, error) {
 	currentUser := c.MustGet("user").(user)
 	rows, err := app.db.Query(c.Request.Context(), `
-		SELECT id, email, full_name, role, active, must_change_password, created_at
+		SELECT id, email, full_name, role, COALESCE(internal_service, ''),
+		       is_committee_chair, active, must_change_password, created_at
 		FROM users
 		ORDER BY created_at, id
 	`)
@@ -56,12 +61,15 @@ func (app *application) listUsers(c *gin.Context) ([]userListItem, error) {
 		var role string
 		var created time.Time
 		if err := rows.Scan(
-			&item.ID, &item.Email, &item.FullName, &role, &item.Active,
+			&item.ID, &item.Email, &item.FullName, &role, &item.InternalService,
+			&item.IsCommitteeChair, &item.Active,
 			&item.MustChangePassword, &created,
 		); err != nil {
 			return nil, err
 		}
 		item.RoleLabel = roleLabel(role)
+		item.Role = role
+		item.ServiceLabel = internalServiceLabel(item.InternalService)
 		item.IsCurrent = item.ID == currentUser.ID
 		item.CreatedLabel = created.Format("02.01.2006")
 		users = append(users, item)
@@ -84,11 +92,17 @@ func (app *application) renderUsers(c *gin.Context, status int, message string, 
 	if _, exists := values["ResetUserID"]; !exists {
 		values["ResetUserID"] = int64(0)
 	}
+	if _, exists := values["AssignmentUserID"]; !exists {
+		values["AssignmentUserID"] = int64(0)
+	}
 	if _, exists := values["Success"]; !exists && c.Query("password_reset") == "1" {
 		values["Success"] = "Пароль сброшен. Передайте пользователю временный пароль безопасным каналом."
 	}
 	if _, exists := values["Success"]; !exists && c.Query("user_deleted") == "1" {
 		values["Success"] = "Пользователь удалён: вход отключён, действующие сессии завершены."
+	}
+	if _, exists := values["Success"]; !exists && c.Query("assignment_updated") == "1" {
+		values["Success"] = "Назначение пользователя обновлено."
 	}
 	values["Title"] = "Пользователи"
 	values["User"] = c.MustGet("user").(user)
@@ -106,9 +120,14 @@ func (app *application) createUser(c *gin.Context) {
 	email := strings.ToLower(strings.TrimSpace(c.PostForm("email")))
 	fullName := strings.TrimSpace(c.PostForm("full_name"))
 	role := c.PostForm("role")
+	internalService := strings.TrimSpace(c.PostForm("internal_service"))
+	isCommitteeChair := role == "committee" && c.PostForm("is_committee_chair") == "1"
 	password := c.PostForm("temporary_password")
 	confirmation := c.PostForm("password_confirmation")
-	values := gin.H{"Email": email, "FullName": fullName, "SelectedRole": role}
+	values := gin.H{
+		"Email": email, "FullName": fullName, "SelectedRole": role,
+		"SelectedService": internalService, "SelectedChair": isCommitteeChair,
+	}
 
 	parsedAddress, emailError := mail.ParseAddress(email)
 	if email == "" || len(email) > 320 || emailError != nil || strings.ToLower(parsedAddress.Address) != email {
@@ -122,6 +141,13 @@ func (app *application) createUser(c *gin.Context) {
 	if !validAssignableRole(role) {
 		app.renderUsers(c, http.StatusUnprocessableEntity, "Выберите допустимую роль", values)
 		return
+	}
+	if role == "approver" && !validInternalService(internalService) {
+		app.renderUsers(c, http.StatusUnprocessableEntity, "Для согласующего выберите одну из четырёх дирекций", values)
+		return
+	}
+	if role != "approver" {
+		internalService = ""
 	}
 	if len(password) < minimumPasswordLength {
 		app.renderUsers(c, http.StatusUnprocessableEntity, "Временный пароль должен содержать не менее 8 символов", values)
@@ -142,12 +168,23 @@ func (app *application) createUser(c *gin.Context) {
 		return
 	}
 	defer tx.Rollback(c.Request.Context())
+	if err := lockUserAssignments(c, tx); err != nil {
+		c.String(http.StatusInternalServerError, "Не удалось проверить назначения пользователей")
+		return
+	}
+	if err := ensureUniqueActiveAssignment(c, tx, role, isCommitteeChair, 0); err != nil {
+		app.renderUsers(c, http.StatusConflict, err.Error(), values)
+		return
+	}
 	var userID int64
 	err = tx.QueryRow(c.Request.Context(), `
-		INSERT INTO users (email, full_name, password_hash, role, must_change_password)
-		VALUES ($1, $2, $3, $4, TRUE)
+		INSERT INTO users (
+			email, full_name, password_hash, role, internal_service,
+			is_committee_chair, must_change_password
+		)
+		VALUES ($1, $2, $3, $4, NULLIF($5, ''), $6, TRUE)
 		RETURNING id
-	`, email, fullName, passwordHash, role).Scan(&userID)
+	`, email, fullName, passwordHash, role, internalService, isCommitteeChair).Scan(&userID)
 	if err != nil {
 		var databaseError *pgconn.PgError
 		if errors.As(err, &databaseError) && databaseError.Code == "23505" {
@@ -159,7 +196,8 @@ func (app *application) createUser(c *gin.Context) {
 	}
 	if err := app.writeAudit(c.Request.Context(), tx, c.MustGet("user").(user), auditRecord{
 		EventType: "user.created", TargetType: "user", TargetID: &userID,
-		TargetLabel: fullName + " · " + email, Details: roleLabel(role),
+		TargetLabel: fullName + " · " + email,
+		Details:     assignmentDetails(role, internalService, isCommitteeChair),
 	}); err != nil {
 		c.String(http.StatusInternalServerError, "Не удалось записать событие аудита")
 		return
@@ -169,6 +207,108 @@ func (app *application) createUser(c *gin.Context) {
 		return
 	}
 	c.Redirect(http.StatusSeeOther, "/admin/users")
+}
+
+func (app *application) updateUserAssignment(c *gin.Context) {
+	userID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || userID < 1 {
+		c.String(http.StatusBadRequest, "Некорректный идентификатор пользователя")
+		return
+	}
+	internalService := strings.TrimSpace(c.PostForm("internal_service"))
+	isCommitteeChair := c.PostForm("is_committee_chair") == "1"
+	values := gin.H{"AssignmentUserID": userID}
+
+	tx, err := app.db.Begin(c.Request.Context())
+	if err != nil {
+		c.String(http.StatusInternalServerError, "Не удалось начать обновление назначения")
+		return
+	}
+	defer tx.Rollback(c.Request.Context())
+	if err := lockUserAssignments(c, tx); err != nil {
+		c.String(http.StatusInternalServerError, "Не удалось проверить назначения пользователей")
+		return
+	}
+
+	var role, fullName, email string
+	err = tx.QueryRow(c.Request.Context(), `
+		SELECT role, full_name, email FROM users WHERE id = $1 AND active = TRUE FOR UPDATE
+	`, userID).Scan(&role, &fullName, &email)
+	if errors.Is(err, pgx.ErrNoRows) {
+		app.renderUsers(c, http.StatusNotFound, "Активный пользователь не найден", values)
+		return
+	}
+	if err != nil {
+		c.String(http.StatusInternalServerError, "Не удалось загрузить пользователя")
+		return
+	}
+	if role == "approver" {
+		isCommitteeChair = false
+		if !validInternalService(internalService) {
+			app.renderUsers(c, http.StatusUnprocessableEntity, "Выберите дирекцию согласующего", values)
+			return
+		}
+	} else if role == "committee" {
+		internalService = ""
+	} else {
+		app.renderUsers(c, http.StatusUnprocessableEntity, "Для этой роли дополнительных назначений нет", values)
+		return
+	}
+	if err := ensureUniqueActiveAssignment(c, tx, role, isCommitteeChair, userID); err != nil {
+		app.renderUsers(c, http.StatusConflict, err.Error(), values)
+		return
+	}
+	_, err = tx.Exec(c.Request.Context(), `
+		UPDATE users SET internal_service = NULLIF($2, ''), is_committee_chair = $3 WHERE id = $1
+	`, userID, internalService, isCommitteeChair)
+	if err != nil {
+		c.String(http.StatusInternalServerError, "Не удалось обновить назначение пользователя")
+		return
+	}
+	if err := app.writeAudit(c.Request.Context(), tx, c.MustGet("user").(user), auditRecord{
+		EventType: "user.assignment_updated", TargetType: "user", TargetID: &userID,
+		TargetLabel: fullName + " · " + email,
+		Details:     assignmentDetails(role, internalService, isCommitteeChair),
+	}); err != nil {
+		c.String(http.StatusInternalServerError, "Не удалось записать событие аудита")
+		return
+	}
+	if err := tx.Commit(c.Request.Context()); err != nil {
+		c.String(http.StatusInternalServerError, "Не удалось сохранить назначение пользователя")
+		return
+	}
+	c.Redirect(http.StatusSeeOther, "/admin/users?assignment_updated=1")
+}
+
+func lockUserAssignments(c *gin.Context, tx pgx.Tx) error {
+	_, err := tx.Exec(c.Request.Context(), "SELECT pg_advisory_xact_lock(684621930)")
+	return err
+}
+
+func ensureUniqueActiveAssignment(c *gin.Context, tx pgx.Tx, role string, chair bool, excludeID int64) error {
+	if role == "secretary" {
+		var count int
+		if err := tx.QueryRow(c.Request.Context(), `
+			SELECT COUNT(*) FROM users WHERE active = TRUE AND role = 'secretary' AND id <> $1
+		`, excludeID).Scan(&count); err != nil {
+			return errors.New("Не удалось проверить действующего секретаря")
+		}
+		if count > 0 {
+			return errors.New("В системе уже есть активный секретарь")
+		}
+	}
+	if chair {
+		var count int
+		if err := tx.QueryRow(c.Request.Context(), `
+			SELECT COUNT(*) FROM users WHERE active = TRUE AND is_committee_chair = TRUE AND id <> $1
+		`, excludeID).Scan(&count); err != nil {
+			return errors.New("Не удалось проверить председателя Комитета")
+		}
+		if count > 0 {
+			return errors.New("В системе уже есть активный председатель Комитета")
+		}
+	}
+	return nil
 }
 
 func (app *application) resetUserPassword(c *gin.Context) {
@@ -406,4 +546,39 @@ func roleLabel(role string) string {
 	default:
 		return role
 	}
+}
+
+func validInternalService(service string) bool {
+	switch service {
+	case "legal", "finance", "construction", "security":
+		return true
+	default:
+		return false
+	}
+}
+
+func internalServiceLabel(service string) string {
+	switch service {
+	case "legal":
+		return "Юридическая дирекция"
+	case "finance":
+		return "Финансовая дирекция"
+	case "construction":
+		return "Строительная дирекция"
+	case "security":
+		return "Дирекция по безопасности"
+	default:
+		return "Дирекция не назначена"
+	}
+}
+
+func assignmentDetails(role, service string, chair bool) string {
+	details := roleLabel(role)
+	if service != "" {
+		details += " · " + internalServiceLabel(service)
+	}
+	if chair {
+		details += " · Председатель Комитета"
+	}
+	return details
 }
