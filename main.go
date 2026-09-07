@@ -110,6 +110,8 @@ func main() {
 	router.POST("/questions/:id/internal-review/visas/:visaID/withdraw", app.requireUser(), app.requireCSRF(), app.requireInternalApprover(), app.withdrawInternalVisa)
 	router.POST("/questions/:id/internal-review/extend", app.requireUser(), app.requireCSRF(), app.requireRole("secretary"), app.extendInternalReview)
 	router.POST("/questions/:id/internal-review/cancel", app.requireUser(), app.requireCSRF(), app.requireRole("secretary"), app.cancelInternalReview)
+	router.POST("/questions/:id/internal-review/restart", app.requireUser(), app.requireCSRF(), app.requireRole("secretary"), app.restartInternalReview)
+	router.GET("/questions/:id/internal-review/attachments/:attachmentID/download", app.requireUser(), app.downloadInternalVisaAttachment)
 	router.GET("/storage/check", app.requireUser(), app.checkStorage)
 	router.POST("/documents", app.requireUser(), app.requireCSRF(), app.createDocument)
 	router.GET("/documents/:id", app.requireUser(), app.showDocument)
@@ -387,6 +389,37 @@ func (app *application) migrate(ctx context.Context) error {
 			ON internal_review_visas(requirement_id) WHERE withdrawn_at IS NULL;
 		CREATE INDEX IF NOT EXISTS internal_review_visas_requirement_idx
 			ON internal_review_visas(requirement_id, decided_at DESC, id DESC);
+		ALTER TABLE internal_review_visas ADD COLUMN IF NOT EXISTS carried_by BIGINT REFERENCES users(id);
+		ALTER TABLE internal_review_visas ADD COLUMN IF NOT EXISTS carried_at TIMESTAMPTZ;
+		DO $$
+		BEGIN
+			IF NOT EXISTS (
+				SELECT 1 FROM pg_constraint
+				WHERE conname = 'internal_review_visas_carry_check'
+				  AND conrelid = 'internal_review_visas'::regclass
+			) THEN
+				ALTER TABLE internal_review_visas ADD CONSTRAINT internal_review_visas_carry_check CHECK (
+					(source_visa_id IS NULL AND carried_by IS NULL AND carried_at IS NULL)
+					OR (source_visa_id IS NOT NULL AND carried_by IS NOT NULL AND carried_at IS NOT NULL)
+				);
+			END IF;
+		END;
+		$$;
+
+		CREATE TABLE IF NOT EXISTS internal_visa_attachments (
+			id BIGSERIAL PRIMARY KEY,
+			visa_id BIGINT NOT NULL REFERENCES internal_review_visas(id),
+			object_key TEXT NOT NULL UNIQUE,
+			s3_version_id TEXT,
+			original_filename TEXT NOT NULL,
+			content_type TEXT NOT NULL,
+			size_bytes BIGINT NOT NULL CHECK (size_bytes > 0),
+			uploaded_by BIGINT NOT NULL REFERENCES users(id),
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		);
+
+		CREATE INDEX IF NOT EXISTS internal_visa_attachments_visa_idx
+			ON internal_visa_attachments(visa_id, id);
 
 		CREATE TABLE IF NOT EXISTS audit_events (
 			id BIGSERIAL PRIMARY KEY,

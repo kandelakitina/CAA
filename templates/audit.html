@@ -45,6 +45,7 @@
 			<option value="internal_review.extended" {{ if eq .Filters.EventType "internal_review.extended" }}selected{{ end }}>Продление внутреннего согласования</option>
 			<option value="internal_review.completed" {{ if eq .Filters.EventType "internal_review.completed" }}selected{{ end }}>Завершение внутреннего согласования</option>
 			<option value="internal_review.cancelled" {{ if eq .Filters.EventType "internal_review.cancelled" }}selected{{ end }}>Отмена внутреннего согласования</option>
+			<option value="internal_review.restarted" {{ if eq .Filters.EventType "internal_review.restarted" }}selected{{ end }}>Повторное внутреннее согласование</option>
             <option value="document.created" {{ if eq .Filters.EventType "document.created" }}selected{{ end }}>Создание документа</option>
             <option value="document.version_uploaded" {{ if eq .Filters.EventType "document.version_uploaded" }}selected{{ end }}>Новая версия</option>
             <option value="approval.started" {{ if eq .Filters.EventType "approval.started" }}selected{{ end }}>Запуск согласования</option>

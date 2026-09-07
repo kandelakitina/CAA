@@ -215,6 +215,7 @@ func auditEventLabel(eventType string) string {
 		"internal_review.extended":        "Продлён срок внутреннего согласования",
 		"internal_review.completed":       "Завершено внутреннее согласование",
 		"internal_review.cancelled":       "Отменено внутреннее согласование",
+		"internal_review.restarted":       "Запущено повторное внутреннее согласование",
 		"document.created":                "Создан документ",
 		"document.version_uploaded":       "Загружена версия документа",
 		"approval.started":                "Запущено согласование",

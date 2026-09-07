@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -55,6 +56,8 @@ type internalVisaItem struct {
 	Withdrawn      bool
 	WithdrawnLabel string
 	CanWithdraw    bool
+	CarryLabel     string
+	Attachments    []visaAttachmentItem
 }
 
 func (app *application) requireInternalApprover() gin.HandlerFunc {
@@ -280,6 +283,7 @@ func (app *application) respondInternalReview(c *gin.Context) {
 	if !ok {
 		return
 	}
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxDocumentSize*maxVisaAttachments+(2<<20))
 	requirementID, err := strconv.ParseInt(strings.TrimSpace(c.PostForm("requirement_id")), 10, 64)
 	if err != nil || requirementID < 1 {
 		c.String(http.StatusBadRequest, "Некорректное задание на согласование")
@@ -291,12 +295,29 @@ func (app *application) respondInternalReview(c *gin.Context) {
 		c.String(http.StatusUnprocessableEntity, err.Error())
 		return
 	}
+	attachments, attachmentStatus, attachmentMessage := receiveVisaAttachments(c)
+	if attachmentMessage != "" {
+		c.String(attachmentStatus, attachmentMessage)
+		return
+	}
+	defer closeQuestionUploads(attachments)
+	if len(attachments) > 0 && app.storage == nil {
+		c.String(http.StatusServiceUnavailable, "S3 не настроен: вложения не сохранены")
+		return
+	}
 	tx, err := app.db.Begin(c.Request.Context())
 	if err != nil {
 		c.String(http.StatusInternalServerError, "Не удалось начать сохранение визы")
 		return
 	}
 	defer tx.Rollback(c.Request.Context())
+	var storedAttachments []storedS3Object
+	committed := false
+	defer func() {
+		if !committed {
+			app.removeStoredS3Objects(storedAttachments)
+		}
+	}()
 	var questionTitle, questionStatus string
 	err = tx.QueryRow(c.Request.Context(), `
 		SELECT title, status FROM questions WHERE id = $1 FOR UPDATE
@@ -353,6 +374,9 @@ func (app *application) respondInternalReview(c *gin.Context) {
 		INSERT INTO internal_review_visas (requirement_id, decision, comment, decided_by)
 		VALUES ($1, $2, $3, $4) RETURNING id
 	`, requirementID, decision, comment, usr.ID).Scan(&visaID)
+	if err == nil && len(attachments) > 0 {
+		storedAttachments, err = app.storeVisaAttachments(c.Request.Context(), tx, questionID, visaID, usr, attachments)
+	}
 	if err == nil {
 		_, err = tx.Exec(c.Request.Context(), `UPDATE internal_review_requirements SET status = 'responded' WHERE id = $1`, requirementID)
 	}
@@ -360,7 +384,7 @@ func (app *application) respondInternalReview(c *gin.Context) {
 		err = app.writeAudit(c.Request.Context(), tx, usr, auditRecord{
 			EventType: "internal_review.visa_submitted", TargetType: "internal_visa", TargetID: &visaID,
 			TargetLabel: fileTitle, QuestionID: &questionID, VersionNo: &versionNo,
-			Details: internalServiceLabel(service) + ": " + internalDecisionLabel(decision),
+			Details: fmt.Sprintf("%s: %s. Вложений: %d", internalServiceLabel(service), internalDecisionLabel(decision), len(attachments)),
 		})
 	}
 	if err == nil {
@@ -370,9 +394,11 @@ func (app *application) respondInternalReview(c *gin.Context) {
 		err = tx.Commit(c.Request.Context())
 	}
 	if err != nil {
+		log.Printf("save internal visa for question %d: %v", questionID, err)
 		c.String(http.StatusInternalServerError, "Не удалось сохранить визу")
 		return
 	}
+	committed = true
 	c.Redirect(http.StatusSeeOther, fmt.Sprintf("/questions/%d", questionID))
 }
 
@@ -484,10 +510,11 @@ func (app *application) withdrawInternalVisa(c *gin.Context) {
 	var requirementID int64
 	var versionNo int
 	var decidedBy int64
+	var sourceVisaID int64
 	var decidedAt time.Time
 	var service, roundStatus, fileTitle string
 	err = tx.QueryRow(c.Request.Context(), `
-		SELECT v.requirement_id, v.decided_by, v.decided_at, r.version_no,
+		SELECT v.requirement_id, v.decided_by, v.decided_at, COALESCE(v.source_visa_id, 0), r.version_no,
 		       r.internal_service, rr.status, f.title
 		FROM internal_review_visas v
 		JOIN internal_review_requirements r ON r.id = v.requirement_id
@@ -495,7 +522,7 @@ func (app *application) withdrawInternalVisa(c *gin.Context) {
 		JOIN question_files f ON f.id = r.question_file_id
 		WHERE v.id = $1 AND rr.question_id = $2 AND v.withdrawn_at IS NULL
 		FOR UPDATE OF v, r, rr
-	`, visaID, questionID).Scan(&requirementID, &decidedBy, &decidedAt, &versionNo, &service, &roundStatus, &fileTitle)
+	`, visaID, questionID).Scan(&requirementID, &decidedBy, &decidedAt, &sourceVisaID, &versionNo, &service, &roundStatus, &fileTitle)
 	if errors.Is(err, pgx.ErrNoRows) {
 		c.String(http.StatusNotFound, "Действующая виза не найдена")
 		return
@@ -506,6 +533,10 @@ func (app *application) withdrawInternalVisa(c *gin.Context) {
 	}
 	if decidedBy != usr.ID || service != usr.InternalService {
 		c.String(http.StatusForbidden, "Отозвать визу может только отправивший её пользователь")
+		return
+	}
+	if sourceVisaID > 0 {
+		c.String(http.StatusConflict, "Перенесённую визу нельзя отозвать как новое решение")
 		return
 	}
 	if roundStatus != "active" {
@@ -724,11 +755,20 @@ func (app *application) loadInternalReview(ctx context.Context, questionID int64
 	}
 	rows.Close()
 	view.ProgressLabel = fmt.Sprintf("%d из %d", responded, len(view.Items))
+	attachmentsByVisa, err := loadVisaAttachmentViews(ctx, app.db, roundID)
+	if err != nil {
+		return internalReviewView{}, err
+	}
 	visaRows, err := app.db.Query(ctx, `
 		SELECT v.id, v.requirement_id, v.decision, v.comment, v.decided_by, u.full_name, v.decided_at,
-		       v.withdrawn_at IS NOT NULL, COALESCE(v.withdrawn_at, 'epoch'::timestamptz)
+		       v.withdrawn_at IS NOT NULL, COALESCE(v.withdrawn_at, 'epoch'::timestamptz),
+		       COALESCE(v.source_visa_id, 0), COALESCE(carrier.full_name, ''),
+		       COALESCE(v.carried_at, 'epoch'::timestamptz), COALESCE(source_requirement.version_no, 0)
 		FROM internal_review_visas v JOIN users u ON u.id = v.decided_by
 		JOIN internal_review_requirements r ON r.id = v.requirement_id
+		LEFT JOIN users carrier ON carrier.id = v.carried_by
+		LEFT JOIN internal_review_visas source_visa ON source_visa.id = v.source_visa_id
+		LEFT JOIN internal_review_requirements source_requirement ON source_requirement.id = source_visa.requirement_id
 		WHERE r.round_id = $1 ORDER BY v.decided_at DESC, v.id DESC
 	`, roundID)
 	if err != nil {
@@ -738,11 +778,14 @@ func (app *application) loadInternalReview(ctx context.Context, questionID int64
 	for visaRows.Next() {
 		var requirementID int64
 		var decidedByID int64
+		var sourceVisaID int64
+		var sourceVersion int
+		var carrierName string
 		var decision string
-		var decidedAt, withdrawnAt time.Time
+		var decidedAt, withdrawnAt, carriedAt time.Time
 		var visa internalVisaItem
 		if err := visaRows.Scan(&visa.ID, &requirementID, &decision, &visa.Comment, &decidedByID, &visa.DecidedBy,
-			&decidedAt, &visa.Withdrawn, &withdrawnAt); err != nil {
+			&decidedAt, &visa.Withdrawn, &withdrawnAt, &sourceVisaID, &carrierName, &carriedAt, &sourceVersion); err != nil {
 			return internalReviewView{}, err
 		}
 		index, ok := indexes[requirementID]
@@ -751,12 +794,16 @@ func (app *application) loadInternalReview(ctx context.Context, questionID int64
 		}
 		visa.DecisionLabel = internalDecisionLabel(decision)
 		visa.DecidedLabel = decidedAt.Format("02.01.2006 15:04")
+		visa.Attachments = attachmentsByVisa[visa.ID]
+		if sourceVisaID > 0 {
+			visa.CarryLabel = fmt.Sprintf("Исходная версия %d · перенос выполнил: %s · %s", sourceVersion, carrierName, carriedAt.Format("02.01.2006 15:04"))
+		}
 		if visa.Withdrawn {
 			visa.WithdrawnLabel = withdrawnAt.Format("02.01.2006 15:04")
 			view.Items[index].History = append(view.Items[index].History, visa)
 			continue
 		}
-		visa.CanWithdraw = view.Active && decidedByID == usr.ID && usr.Role == "approver" && usr.InternalService == view.Items[index].Service && !time.Now().After(decidedAt.Add(24*time.Hour))
+		visa.CanWithdraw = sourceVisaID == 0 && view.Active && decidedByID == usr.ID && usr.Role == "approver" && usr.InternalService == view.Items[index].Service && !time.Now().After(decidedAt.Add(24*time.Hour))
 		view.Items[index].HasVisa = true
 		view.Items[index].Visa = visa
 	}

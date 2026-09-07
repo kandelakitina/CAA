@@ -112,10 +112,20 @@ button:hover { background: #7890ff; }
 .service-badge { padding: 0.25rem 0.5rem; border-radius: 999px; background: rgba(91, 120, 255, 0.16); color: #aebeff; font-size: 0.75rem; font-weight: 800; }
 .visa-result { display: grid; gap: 0.5rem; }
 .visa-result p, .visa-history p { margin: 0; color: #cbd5e1; line-height: 1.5; white-space: pre-wrap; }
+.visa-attachments { display: grid; gap: 0.35rem; }
 .pending-visa { margin: 0; color: #8393ab; }
 .visa-history summary { cursor: pointer; color: #aebeff; font-weight: 800; }
 .visa-history > div { display: grid; gap: 0.3rem; margin-top: 0.7rem; padding-top: 0.7rem; border-top: 1px solid #33445f; }
 .visa-history span { color: #8393ab; font-size: 0.8rem; }
+.revision-section { display: grid; gap: 1rem; margin-top: 2rem; }
+.revision-section .section-heading { margin-bottom: 0; }
+.revision-file-list { display: grid; gap: 0.85rem; }
+.revision-file { display: grid; gap: 0.9rem; padding: 1rem; border: 1px solid #33445f; border-radius: 0.9rem; background: rgba(12, 22, 39, 0.55); }
+.revision-services { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: 0.6rem; }
+.revision-service { display: flex; align-items: flex-start; gap: 0.55rem; padding: 0.7rem; border: 1px solid #33445f; border-radius: 0.7rem; }
+.revision-service--required { border-color: rgba(250, 204, 21, 0.38); }
+.revision-service span { display: grid; gap: 0.2rem; }
+.revision-service small { color: #8393ab; line-height: 1.35; }
 .form-hint { margin: 0; color: #8fa0b8; font-size: 0.9rem; }
 .section-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; margin: 2rem 0 1rem; }
 .section-heading h2 { margin: 0; }

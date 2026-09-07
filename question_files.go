@@ -85,6 +85,10 @@ func receiveQuestionFileUpload(c *gin.Context) (*documentUpload, int, string) {
 	if err != nil {
 		return nil, http.StatusUnprocessableEntity, "Выберите файл"
 	}
+	return openValidatedQuestionFile(fileHeader)
+}
+
+func openValidatedQuestionFile(fileHeader *multipart.FileHeader) (*documentUpload, int, string) {
 	if fileHeader.Size < 1 || fileHeader.Size > maxDocumentSize {
 		return nil, http.StatusRequestEntityTooLarge, "Допустимый размер файла — от 1 байта до 25 МБ"
 	}

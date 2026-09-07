@@ -245,10 +245,16 @@ func (app *application) showQuestion(c *gin.Context) {
 		c.String(http.StatusInternalServerError, "Не удалось загрузить внутреннее согласование")
 		return
 	}
+	revisionPlan, err := app.loadRevisionPlan(c.Request.Context(), questionID, status, usr)
+	if err != nil {
+		c.String(http.StatusInternalServerError, "Не удалось подготовить повторное согласование")
+		return
+	}
 
 	c.HTML(http.StatusOK, "question.html", gin.H{
 		"Title": detail.Title, "User": usr, "CSRFToken": app.templateCSRF(c), "Question": detail,
 		"Files": files, "CanUploadFiles": canUpload, "InternalReview": internalReview,
+		"RevisionPlan": revisionPlan,
 	})
 }
 

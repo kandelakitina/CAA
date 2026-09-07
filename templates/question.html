@@ -116,6 +116,33 @@
 		{{ end }}
 	  </section>
 
+	  {{ if .RevisionPlan.Available }}
+	  <section class="revision-section">
+		<div class="section-heading"><div><p class="eyebrow">После замечаний</p><h2>Повторное согласование</h2></div></div>
+		{{ if .RevisionPlan.CanRestart }}<form class="form-stack" method="post" action="/questions/{{ .Question.ID }}/internal-review/restart"><input type="hidden" name="_csrf" value="{{ .CSRFToken }}">{{ end }}
+		{{ if .RevisionPlan.BlockReason }}<div class="alert">{{ .RevisionPlan.BlockReason }}</div>{{ end }}
+		<div class="revision-file-list">
+		  {{ range .RevisionPlan.Files }}
+		  <article class="revision-file">
+			<div class="review-item-heading"><div><strong>{{ .Title }}</strong><span>{{ if .IsNew }}Новый файл · версия {{ .CurrentVersion }}{{ else }}Версия {{ .PreviousVersion }} → {{ .CurrentVersion }}{{ end }}</span></div>{{ if .Changed }}<span class="status-pill">Изменён</span>{{ end }}</div>
+			<div class="revision-services">
+			  {{ range .Services }}
+			  <label class="revision-service {{ if .Automatic }}revision-service--required{{ end }}">
+				{{ if and .Selectable $.RevisionPlan.CanRestart }}<input type="checkbox" name="review_service" value="{{ .Value }}">{{ end }}
+				<span><strong>{{ .ServiceLabel }}</strong><small>{{ .DecisionLabel }} · {{ if .Automatic }}повторная виза обязательна{{ else if .Selectable }}можно назначить повторно{{ else if .Carried }}виза будет перенесена{{ end }}</small></span>
+			  </label>
+			  {{ end }}
+			</div>
+		  </article>
+		  {{ end }}
+		</div>
+		{{ if .RevisionPlan.CanRestart }}
+		<label>Новый срок согласования<input type="date" name="deadline" required value="{{ .RevisionPlan.DeadlineValue }}"></label>
+		<button type="submit" {{ if not .RevisionPlan.Ready }}disabled{{ end }}>Запустить повторное согласование</button>
+		</form>{{ end }}
+	  </section>
+	  {{ end }}
+
 	  <section class="internal-review-section">
 		<div class="section-heading">
 		  <div><p class="eyebrow">Четыре дирекции</p><h2>Внутреннее согласование</h2></div>
@@ -160,7 +187,9 @@
 			<div class="visa-result">
 			  <strong>{{ .Visa.DecisionLabel }}</strong>
 			  <span>{{ .Visa.DecidedBy }} · {{ .Visa.DecidedLabel }}</span>
+			  {{ if .Visa.CarryLabel }}<span>{{ .Visa.CarryLabel }}</span>{{ end }}
 			  {{ if .Visa.Comment }}<p>{{ .Visa.Comment }}</p>{{ end }}
+			  {{ if .Visa.Attachments }}<div class="visa-attachments">{{ range .Visa.Attachments }}<a class="text-link" href="/questions/{{ $.Question.ID }}/internal-review/attachments/{{ .ID }}/download">{{ .Filename }} · {{ .SizeLabel }}</a>{{ end }}</div>{{ end }}
 			  {{ if .Visa.CanWithdraw }}
 			  <form method="post" action="/questions/{{ $.Question.ID }}/internal-review/visas/{{ .Visa.ID }}/withdraw">
 				<input type="hidden" name="_csrf" value="{{ $.CSRFToken }}">
@@ -169,7 +198,7 @@
 			  {{ end }}
 			</div>
 			{{ else if .CanRespond }}
-			<form class="form-stack visa-form" method="post" action="/questions/{{ $.Question.ID }}/internal-review/respond">
+			<form class="form-stack visa-form" method="post" action="/questions/{{ $.Question.ID }}/internal-review/respond" enctype="multipart/form-data">
 			  <input type="hidden" name="_csrf" value="{{ $.CSRFToken }}">
 			  <input type="hidden" name="requirement_id" value="{{ .RequirementID }}">
 			  <label>Решение
@@ -182,6 +211,7 @@
 				</select>
 			  </label>
 			  <label>Комментарий<textarea name="comment" rows="3" maxlength="5000"></textarea></label>
+			  <label>Вложения к замечаниям — до 10 файлов по 25 МБ<input type="file" name="attachments" accept=".doc,.docx,.xls,.xlsx,.pdf" multiple></label>
 			  <button type="submit">Отправить визу</button>
 			</form>
 			{{ else if not .FilePaused }}
@@ -189,7 +219,7 @@
 			{{ end }}
 			{{ if .History }}
 			<details class="visa-history"><summary>Отозванные визы: {{ len .History }}</summary>
-			  {{ range .History }}<div><strong>{{ .DecisionLabel }}</strong><span>{{ .DecidedBy }} · {{ .DecidedLabel }} · отозвана {{ .WithdrawnLabel }}</span>{{ if .Comment }}<p>{{ .Comment }}</p>{{ end }}</div>{{ end }}
+			  {{ range .History }}<div><strong>{{ .DecisionLabel }}</strong><span>{{ .DecidedBy }} · {{ .DecidedLabel }} · отозвана {{ .WithdrawnLabel }}</span>{{ if .Comment }}<p>{{ .Comment }}</p>{{ end }}{{ if .Attachments }}<div class="visa-attachments">{{ range .Attachments }}<a class="text-link" href="/questions/{{ $.Question.ID }}/internal-review/attachments/{{ .ID }}/download">{{ .Filename }} · {{ .SizeLabel }}</a>{{ end }}</div>{{ end }}</div>{{ end }}
 			</details>
 			{{ end }}
 		  </article>
