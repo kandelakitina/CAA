@@ -351,6 +351,10 @@ Go/Gin/HTMX-приложение с PostgreSQL, закрытым входом и
 
 ## Локальный запуск
 
+Для изолированной проверки на Windows без Docker подготовлены переносимые
+PostgreSQL и S3-сервер, команды запуска/остановки и сквозной HTTP-тест:
+[LOCAL_TEST.md](LOCAL_TEST.md). Обычный `go test ./...` не требует этих серверов.
+
 ```bash
 go mod download
 go run .

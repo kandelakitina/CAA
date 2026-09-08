@@ -81,6 +81,20 @@ func main() {
 		log.Fatalf("create initial administrator: %v", err)
 	}
 
+	router := app.routes()
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
+	address := "0.0.0.0:" + port
+	log.Printf("starting server on %s", address)
+	if err := router.Run(address); err != nil {
+		log.Fatal(err)
+	}
+}
+
+// Shared by the deployed server and local integration tests.
+func (app *application) routes() *gin.Engine {
 	router := gin.Default()
 	router.LoadHTMLGlob("templates/*")
 	router.Static("/static", "./static")
@@ -142,16 +156,7 @@ func main() {
 	router.POST("/documents/:id/approval/complete", app.requireUser(), app.requireCSRF(), app.requireRole("admin", "secretary"), app.completeApproval)
 	router.POST("/documents/:id/approval/cancel", app.requireUser(), app.requireCSRF(), app.requireRole("admin", "secretary"), app.cancelApproval)
 
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "8080"
-	}
-
-	address := "0.0.0.0:" + port
-	log.Printf("starting server on %s", address)
-	if err := router.Run(address); err != nil {
-		log.Fatal(err)
-	}
+	return router
 }
 
 func (app *application) migrate(ctx context.Context) error {

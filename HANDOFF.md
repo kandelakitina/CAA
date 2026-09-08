@@ -79,9 +79,14 @@ The source-level workflow review is complete; see WORKFLOW_REVIEW_2026-09-08.md.
 Fixed rework after positive internal review / unsuccessful Committee voting,
 uploads after Committee cancellation, all-carried round completion, stale repeat
 forms, and the combined attachment request limit. No migrations were added.
-Next: arrange an explicitly authorized integration check with real PostgreSQL/S3;
-no separate test environment currently exists. This is the remaining verification
-stage. Notifications remain a
+The owner authorized a local test environment. Portable PostgreSQL 17.6 and
+SeaweedFS 4.46 are now available in ignored .local-test; see LOCAL_TEST.md.
+Run scripts/local-test.ps1 -Action Test for the real database/S3 HTTP workflow.
+The integration run passed migrations, auth/password changes, access/CSRF checks,
+large attachments, concurrent round starts, revisions, pending uploads, Committee
+rejection/no-quorum/cancellation, protocols and audit immutability. Next: optional
+additional integration scenarios and a separately authorized Timeweb smoke test
+for deployment/proxy/storage specifics. Notifications remain a
 separate requirements/implementation phase. Post-review revisions change only
 decision text; other metadata remains protected after the first review.
 
@@ -113,10 +118,10 @@ Before editing:
 5. Do not implement notifications yet; README marks delivery channels and
    scheduling as a later design stage.
 
-The owner has no separate test server. Local Docker setup was abandoned.
-Verification is limited to isolated tests, static checks and build unless the
-owner explicitly arranges another environment. Never connect to or mutate
-production as part of ordinary development.
+The owner has no separate remote test server. Docker was abandoned, but the new
+portable Windows test setup works without Docker/WSL. It binds only to 127.0.0.1,
+uses generated test credentials, and retains a separate schema for each run.
+Never connect to or mutate production as part of ordinary development.
 
 ## Verification
 
