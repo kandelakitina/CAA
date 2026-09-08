@@ -4,12 +4,14 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{ .Title }}</title>
+  <script src="/static/theme.js"></script>
   <link rel="stylesheet" href="/static/app.css">
 </head>
 <body>
   <header class="topbar">
     <div><p class="eyebrow">Neva Concert Hall</p><strong>Корпоративные согласования</strong></div>
     <div class="account">
+      {{ template "workspace-nav" . }}
       <a class="nav-link" href="/">Вопросы</a>
       {{ if eq .User.Role "admin" }}<a class="nav-link" href="/admin/users">Пользователи</a><a class="nav-link" href="/admin/audit">Аудит</a>{{ end }}
       <a class="nav-link" href="/password/change">Пароль</a>
@@ -23,7 +25,7 @@
       <h1>Протоколы</h1>
       <p class="lead">Протокол объединяет один или несколько положительно рассмотренных вопросов. Дата определяется по самому позднему голосу.</p>
 
-      {{ if eq .User.Role "secretary" }}
+      {{ if or (eq .User.Role "admin") (eq .User.Role "secretary") }}
       {{ if .Candidates }}
       <details class="upload-panel protocol-builder">
         <summary>Сформировать протокол</summary>

@@ -63,8 +63,8 @@ func (app *application) listQuestions(c *gin.Context, usr user) ([]questionListI
 	rows, err := app.db.Query(c.Request.Context(), `
 		SELECT id, title, question_type, status, internal_deadline, updated_at
 		FROM questions
-		WHERE $1 <> 'committee' OR status IN ('committee_voting', 'approved', 'rejected', 'no_quorum')
-		   OR (status = 'cancelled' AND EXISTS (SELECT 1 FROM committee_vote_rounds WHERE question_id = questions.id))
+		WHERE archived_at IS NULL AND ($1 <> 'committee' OR status IN ('committee_voting', 'approved', 'rejected', 'no_quorum')
+		   OR (status = 'cancelled' AND EXISTS (SELECT 1 FROM committee_vote_rounds WHERE question_id = questions.id)))
 		ORDER BY updated_at DESC, id DESC
 	`, usr.Role)
 	if err != nil {
@@ -256,7 +256,7 @@ func (app *application) showQuestion(c *gin.Context) {
 	_, uploadAllowed := questionStatusAfterFileUpload(status)
 	canUpload := canUploadQuestionFiles(usr) && uploadAllowed
 	for i := range files {
-		files[i].CanExclude = usr.Role == "secretary" && canExcludeQuestionFile(status) && !files[i].Excluded && !files[i].HasPending
+		files[i].CanExclude = canManageQuestions(usr) && canExcludeQuestionFile(status) && !files[i].Excluded && !files[i].HasPending
 	}
 	if status == "cancelled" {
 		for i := range files {
@@ -293,11 +293,12 @@ func (app *application) showQuestion(c *gin.Context) {
 
 	c.HTML(http.StatusOK, "question.html", gin.H{
 		"Title": detail.Title, "User": usr, "CSRFToken": app.templateCSRF(c), "Question": detail,
+		"Archived": c.GetBool("archived"),
 		"Files": files, "CanUploadFiles": canUpload, "InternalReview": internalReview,
 		"RevisionPlan": revisionPlan, "CommitteeVote": committeeVote,
-		"CanCancelQuestion":    usr.Role == "secretary" && canCancelQuestion(status),
-		"CanEditQuestion":      usr.Role == "secretary" && canEditQuestion(status, hasReviewHistory),
-		"CanReviseDecision":    usr.Role == "secretary" && canReviseDecision(status, hasReviewHistory),
+		"CanCancelQuestion":    canManageQuestions(usr) && canCancelQuestion(status),
+		"CanEditQuestion":      canManageQuestions(usr) && canEditQuestion(status, hasReviewHistory),
+		"CanReviseDecision":    canManageQuestions(usr) && canReviseDecision(status, hasReviewHistory),
 		"DecisionRevisions":    decisionRevisions,
 		"QuestionContextToken": updatedAt.Format(time.RFC3339Nano),
 		"RoundHistory":         rounds,

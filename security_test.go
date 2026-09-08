@@ -221,7 +221,7 @@ func TestQuestionFileUploaderRoles(t *testing.T) {
 		{name: "secretary", user: user{Role: "secretary"}, wantStatus: http.StatusNoContent},
 		{name: "assigned approver", user: user{Role: "approver", InternalService: "legal"}, wantStatus: http.StatusNoContent},
 		{name: "unassigned approver", user: user{Role: "approver"}, wantStatus: http.StatusForbidden},
-		{name: "administrator", user: user{Role: "admin"}, wantStatus: http.StatusForbidden},
+		{name: "administrator", user: user{Role: "admin"}, wantStatus: http.StatusNoContent},
 		{name: "committee member", user: user{Role: "committee"}, wantStatus: http.StatusForbidden},
 		{name: "observer", user: user{Role: "observer"}, wantStatus: http.StatusForbidden},
 	} {

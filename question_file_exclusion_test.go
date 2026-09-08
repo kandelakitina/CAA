@@ -159,7 +159,7 @@ func TestFileExclusionRoleAndCSRF(t *testing.T) {
 	for _, role := range []string{"secretary", "admin", "approver", "committee", "observer"} {
 		for _, csrf := range []bool{true, false} {
 			router := gin.New()
-			router.POST("/questions/:id/files/:fileID/exclude", func(c *gin.Context) { c.Set("user", user{Role: role}) }, app.requireCSRF(), app.requireRole("secretary"), app.excludeQuestionFile)
+			router.POST("/questions/:id/files/:fileID/exclude", func(c *gin.Context) { c.Set("user", user{Role: role}) }, app.requireCSRF(), app.requireRole("admin", "secretary"), app.excludeQuestionFile)
 			form := url.Values{}
 			if csrf {
 				form.Set("_csrf", app.csrfDigest("session", "exclusion-session"))
@@ -170,7 +170,7 @@ func TestFileExclusionRoleAndCSRF(t *testing.T) {
 			response := httptest.NewRecorder()
 			router.ServeHTTP(response, request)
 			want := 403
-			if role == "secretary" && csrf {
+			if (role == "secretary" || role == "admin") && csrf {
 				want = 422
 			}
 			if response.Code != want {
@@ -181,7 +181,7 @@ func TestFileExclusionRoleAndCSRF(t *testing.T) {
 }
 
 func TestExcludedFileHistoryTemplate(t *testing.T) {
-	tmpl, err := template.ParseFiles("templates/question.html")
+	tmpl, err := template.ParseFiles("templates/question.html", "templates/navigation.html")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -99,6 +99,7 @@ func (app *application) listDocuments(ctx context.Context) ([]documentListItem, 
 		FROM documents d
 		JOIN document_versions v
 		  ON v.document_id = d.id AND v.version_no = d.current_version
+		WHERE d.archived_at IS NULL
 		ORDER BY d.updated_at DESC, d.id DESC
 	`)
 	if err != nil {
@@ -423,6 +424,7 @@ func (app *application) renderDocument(c *gin.Context, status int, documentID in
 		"User":      usr,
 		"CSRFToken": app.templateCSRF(c),
 		"Document":  detail,
+		"Archived":  c.GetBool("archived"),
 		"Versions":  versions,
 		"Approval":  approval,
 		"Error":     message,

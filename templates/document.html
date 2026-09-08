@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{ .Title }}</title>
+  <script src="/static/theme.js"></script>
   <link rel="stylesheet" href="/static/app.css">
 </head>
 <body>
@@ -13,6 +14,7 @@
       <strong>Корпоративные согласования</strong>
     </div>
     <div class="account">
+      {{ template "workspace-nav" . }}
       {{ if eq .User.Role "admin" }}<a class="nav-link" href="/admin/users">Пользователи</a><a class="nav-link" href="/admin/audit">Аудит</a>{{ end }}
       <a class="nav-link" href="/password/change">Пароль</a>
       <span>{{ .User.FullName }}</span>
@@ -34,7 +36,8 @@
       {{ if .Document.Description }}<p class="lead">{{ .Document.Description }}</p>{{ end }}
       {{ if .Error }}<div class="alert">{{ .Error }}</div>{{ end }}
 
-      {{ if or (eq .User.Role "admin") (eq .User.Role "secretary") }}
+      {{ if .Archived }}<div class="alert">Документ в архиве. Доступны просмотр и скачивание истории.</div>{{ end }}
+      {{ if and (not .Archived) (or (eq .User.Role "admin") (eq .User.Role "secretary")) }}
       <details class="upload-panel">
         <summary>Загрузить новую редакцию</summary>
         <form class="form-stack upload-form" method="post" action="/documents/{{ .Document.ID }}/versions" enctype="multipart/form-data">

@@ -705,7 +705,7 @@ func (app *application) loadInternalReview(ctx context.Context, questionID int64
 }
 
 func loadInternalReviewRound(ctx context.Context, db roundHistoryDB, questionID int64, questionStatus string, usr user, selectedRoundID int64) (internalReviewView, error) {
-	view := internalReviewView{CanStart: usr.Role == "secretary" && questionStatus == "draft"}
+	view := internalReviewView{CanStart: canManageQuestions(usr) && questionStatus == "draft"}
 	var roundID int64
 	var status, outcome string
 	var deadline time.Time
@@ -725,7 +725,7 @@ func loadInternalReviewRound(ctx context.Context, db roundHistoryDB, questionID 
 	}
 	view.HasRound = true
 	view.Active = status == "active"
-	view.CanManage = view.Active && usr.Role == "secretary"
+	view.CanManage = view.Active && canManageQuestions(usr)
 	view.DeadlineLabel = deadline.Format("02.01.2006")
 	today := time.Now()
 	view.PastDue = view.Active && deadline.Before(time.Date(today.Year(), today.Month(), today.Day(), 0, 0, 0, 0, today.Location()))

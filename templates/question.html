@@ -4,12 +4,14 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{ .Title }}</title>
+  <script src="/static/theme.js"></script>
   <link rel="stylesheet" href="/static/app.css">
 </head>
 <body>
   <header class="topbar">
     <div><p class="eyebrow">Neva Concert Hall</p><strong>Корпоративные согласования</strong></div>
     <div class="account">
+      {{ template "workspace-nav" . }}
 	  <a class="nav-link" href="/protocols">Протоколы</a>
       {{ if eq .User.Role "admin" }}<a class="nav-link" href="/admin/users">Пользователи</a><a class="nav-link" href="/admin/audit">Аудит</a>{{ end }}
       <a class="nav-link" href="/password/change">Пароль</a>
@@ -18,6 +20,7 @@
     </div>
   </header>
   <main class="content">
+    {{ if .Archived }}<div class="alert">Вопрос в архиве. Доступны просмотр и скачивание истории.</div>{{ end }}
     <section class="card dashboard-card">
       <a class="back-link" href="/">← Все вопросы</a>
       <div class="detail-heading">

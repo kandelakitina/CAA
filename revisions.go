@@ -154,7 +154,7 @@ func loadRevisionPlan(ctx context.Context, db revisionPlanDB, questionID int64, 
 	if err != nil {
 		return revisionPlanView{}, err
 	}
-	plan.CanRestart = usr.Role == "secretary"
+	plan.CanRestart = canManageQuestions(usr)
 	plan.DeadlineValue = time.Now().AddDate(0, 0, 7).Format("2006-01-02")
 	var pending int
 	if err := db.QueryRow(ctx, `

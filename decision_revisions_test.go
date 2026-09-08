@@ -21,7 +21,7 @@ import (
 var decisionTestTime = time.Date(2026, 9, 8, 12, 0, 0, 0, time.UTC)
 
 func TestDecisionRevisionHistoryTemplate(t *testing.T) {
-	tmpl, err := template.ParseFiles("templates/question.html")
+	tmpl, err := template.ParseFiles("templates/question.html", "templates/navigation.html")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -303,12 +303,12 @@ func TestDecisionRevisionRolesAndCSRF(t *testing.T) {
 			router := gin.New()
 			router.LoadHTMLGlob("templates/*")
 			setUser := func(c *gin.Context) { c.Set("user", user{Role: role}) }
-			router.GET("/questions/:id/decision-revisions/new", setUser, app.requireRole("secretary"), app.showDecisionRevision)
-			router.POST("/questions/:id/decision-revisions", setUser, app.requireCSRF(), app.requireRole("secretary"), app.createDecisionRevision)
+			router.GET("/questions/:id/decision-revisions/new", setUser, app.requireRole("admin", "secretary"), app.showDecisionRevision)
+			router.POST("/questions/:id/decision-revisions", setUser, app.requireCSRF(), app.requireRole("admin", "secretary"), app.createDecisionRevision)
 			get := httptest.NewRecorder()
 			router.ServeHTTP(get, httptest.NewRequest(http.MethodGet, "/questions/invalid/decision-revisions/new", nil))
 			wantGet := 403
-			if role == "secretary" {
+			if (role == "secretary" || role == "admin") {
 				wantGet = 400
 			}
 			if get.Code != wantGet {
@@ -324,7 +324,7 @@ func TestDecisionRevisionRolesAndCSRF(t *testing.T) {
 			response := httptest.NewRecorder()
 			router.ServeHTTP(response, request)
 			want := 403
-			if role == "secretary" && csrf {
+			if (role == "secretary" || role == "admin") && csrf {
 				want = 422
 			}
 			if response.Code != want {

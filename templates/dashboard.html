@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{ .Title }}</title>
+  <script src="/static/theme.js"></script>
   <link rel="stylesheet" href="/static/app.css">
   <script src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.8/dist/htmx.min.js" defer></script>
 </head>
@@ -14,6 +15,7 @@
       <strong>Корпоративные согласования</strong>
     </div>
     <div class="account">
+      {{ template "workspace-nav" . }}
 	  <a class="nav-link" href="/protocols">Протоколы</a>
       {{ if eq .User.Role "admin" }}<a class="nav-link" href="/admin/users">Пользователи</a><a class="nav-link" href="/admin/audit">Аудит</a>{{ end }}
       <a class="nav-link" href="/password/change">Пароль</a>
@@ -31,7 +33,7 @@
 
       {{ if .Error }}<div class="alert">{{ .Error }}</div>{{ end }}
 
-	  {{ if eq .User.Role "secretary" }}
+	  {{ if or (eq .User.Role "admin") (eq .User.Role "secretary") }}
 	  <details class="upload-panel" {{ if .Error }}open{{ end }}>
 		<summary>Создать вопрос</summary>
 		<form class="form-stack upload-form" method="post" action="/questions">

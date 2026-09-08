@@ -4,10 +4,12 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{ .Title }}</title>
+  <script src="/static/theme.js"></script>
   <link rel="stylesheet" href="/static/app.css">
 </head>
 <body>
-  <header class="topbar"><div><p class="eyebrow">Neva Concert Hall</p><strong>История согласований</strong></div><div class="account"><a class="nav-link" href="/">Все вопросы</a><span>{{ .User.FullName }}</span></div></header>
+  <header class="topbar"><div><p class="eyebrow">Neva Concert Hall</p><strong>История согласований</strong></div><div class="account">
+      {{ template "workspace-nav" . }}<a class="nav-link" href="/">Все вопросы</a><span>{{ .User.FullName }}</span></div></header>
   <main class="content">
     <section class="card dashboard-card">
       <a class="back-link" href="/questions/{{ .Page.QuestionID }}">← Вернуться к текущему состоянию вопроса</a>

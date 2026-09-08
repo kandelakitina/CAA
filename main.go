@@ -82,6 +82,7 @@ func main() {
 	}
 
 	router := app.routes()
+	go app.runStorageCleanup()
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"
@@ -100,6 +101,15 @@ func (app *application) routes() *gin.Engine {
 	router.Static("/static", "./static")
 
 	router.GET("/health", app.health)
+	router.GET("/admin", app.requireUser(), app.requireRole("admin"), app.adminDashboard)
+	router.POST("/admin/users/:id/restore", app.requireUser(), app.requireCSRF(), app.requireRole("admin"), app.restoreUser)
+	router.POST("/admin/users/:id/revoke-sessions", app.requireUser(), app.requireCSRF(), app.requireRole("admin"), app.revokeUserSessions)
+	router.POST("/admin/maintenance/preview", app.requireUser(), app.requireCSRF(), app.requireRole("admin"), app.previewMaintenance)
+	router.POST("/admin/maintenance/execute", app.requireUser(), app.requireCSRF(), app.requireRole("admin"), app.executeMaintenance)
+	router.POST("/admin/storage/retry", app.requireUser(), app.requireCSRF(), app.requireRole("admin"), app.retryStorageCleanup)
+	router.GET("/reports/statuses", app.requireUser(), app.showStatusReport)
+	router.GET("/reports/statuses.csv", app.requireUser(), app.exportStatusReport)
+	router.GET("/registry", app.requireUser(), func(c *gin.Context) { app.renderDashboard(c, http.StatusOK, "") })
 	router.GET("/login", app.showLogin)
 	router.POST("/login", app.requireLoginCSRF(), app.login)
 	router.POST("/logout", app.requireUser(), app.requireCSRF(), app.logout)
@@ -112,39 +122,39 @@ func (app *application) routes() *gin.Engine {
 	router.POST("/admin/users/:id/assignment", app.requireUser(), app.requireCSRF(), app.requireRole("admin"), app.updateUserAssignment)
 	router.POST("/admin/users/:id/delete", app.requireUser(), app.requireCSRF(), app.requireRole("admin"), app.deleteUser)
 	router.GET("/", app.requireUser(), app.dashboard)
-	router.POST("/questions", app.requireUser(), app.requireCSRF(), app.requireRole("secretary"), app.createQuestion)
+	router.POST("/questions", app.requireUser(), app.requireCSRF(), app.requireRole("admin", "secretary"), app.createQuestion)
 	router.GET("/questions/:id", app.requireUser(), app.showQuestion)
 	router.GET("/questions/:id/rounds/:kind/:roundID", app.requireUser(), app.showRoundHistory)
-	router.GET("/questions/:id/edit", app.requireUser(), app.requireRole("secretary"), app.showQuestionEdit)
-	router.GET("/questions/:id/decision-revisions/new", app.requireUser(), app.requireRole("secretary"), app.showDecisionRevision)
-	router.POST("/questions/:id/decision-revisions", app.requireUser(), app.requireCSRF(), app.requireRole("secretary"), app.createDecisionRevision)
-	router.POST("/questions/:id/edit", app.requireUser(), app.requireCSRF(), app.requireRole("secretary"), app.updateQuestion)
-	router.POST("/questions/:id/cancel", app.requireUser(), app.requireCSRF(), app.requireRole("secretary"), app.cancelQuestion)
+	router.GET("/questions/:id/edit", app.requireUser(), app.requireRole("admin", "secretary"), app.showQuestionEdit)
+	router.GET("/questions/:id/decision-revisions/new", app.requireUser(), app.requireRole("admin", "secretary"), app.showDecisionRevision)
+	router.POST("/questions/:id/decision-revisions", app.requireUser(), app.requireCSRF(), app.requireRole("admin", "secretary"), app.createDecisionRevision)
+	router.POST("/questions/:id/edit", app.requireUser(), app.requireCSRF(), app.requireRole("admin", "secretary"), app.updateQuestion)
+	router.POST("/questions/:id/cancel", app.requireUser(), app.requireCSRF(), app.requireRole("admin", "secretary"), app.cancelQuestion)
 	router.POST("/questions/:id/files", app.requireUser(), app.requireCSRF(), app.requireQuestionFileUploader(), app.uploadQuestionFile)
-	router.POST("/questions/:id/files/:fileID/exclude", app.requireUser(), app.requireCSRF(), app.requireRole("secretary"), app.excludeQuestionFile)
+	router.POST("/questions/:id/files/:fileID/exclude", app.requireUser(), app.requireCSRF(), app.requireRole("admin", "secretary"), app.excludeQuestionFile)
 	router.POST("/questions/:id/files/:fileID/versions", app.requireUser(), app.requireCSRF(), app.requireQuestionFileUploader(), app.uploadQuestionFileVersion)
 	router.GET("/questions/:id/files/:fileID/versions/:version/download", app.requireUser(), app.downloadQuestionFileVersion)
-	router.POST("/questions/:id/files/:fileID/versions/:version/confirm", app.requireUser(), app.requireCSRF(), app.requireRole("secretary"), app.confirmQuestionFileVersion)
-	router.POST("/questions/:id/files/:fileID/versions/:version/reject", app.requireUser(), app.requireCSRF(), app.requireRole("secretary"), app.rejectQuestionFileVersion)
-	router.POST("/questions/:id/internal-review/start", app.requireUser(), app.requireCSRF(), app.requireRole("secretary"), app.startInternalReview)
+	router.POST("/questions/:id/files/:fileID/versions/:version/confirm", app.requireUser(), app.requireCSRF(), app.requireRole("admin", "secretary"), app.confirmQuestionFileVersion)
+	router.POST("/questions/:id/files/:fileID/versions/:version/reject", app.requireUser(), app.requireCSRF(), app.requireRole("admin", "secretary"), app.rejectQuestionFileVersion)
+	router.POST("/questions/:id/internal-review/start", app.requireUser(), app.requireCSRF(), app.requireRole("admin", "secretary"), app.startInternalReview)
 	router.POST("/questions/:id/internal-review/respond", app.requireUser(), app.requireCSRFWithLimit(maxAttachmentsBodySize), app.requireInternalApprover(), app.respondInternalReview)
 	router.POST("/questions/:id/internal-review/visas/:visaID/withdraw", app.requireUser(), app.requireCSRF(), app.requireInternalApprover(), app.withdrawInternalVisa)
-	router.POST("/questions/:id/internal-review/extend", app.requireUser(), app.requireCSRF(), app.requireRole("secretary"), app.extendInternalReview)
-	router.POST("/questions/:id/internal-review/cancel", app.requireUser(), app.requireCSRF(), app.requireRole("secretary"), app.cancelInternalReview)
-	router.POST("/questions/:id/internal-review/restart", app.requireUser(), app.requireCSRF(), app.requireRole("secretary"), app.restartInternalReview)
+	router.POST("/questions/:id/internal-review/extend", app.requireUser(), app.requireCSRF(), app.requireRole("admin", "secretary"), app.extendInternalReview)
+	router.POST("/questions/:id/internal-review/cancel", app.requireUser(), app.requireCSRF(), app.requireRole("admin", "secretary"), app.cancelInternalReview)
+	router.POST("/questions/:id/internal-review/restart", app.requireUser(), app.requireCSRF(), app.requireRole("admin", "secretary"), app.restartInternalReview)
 	router.GET("/questions/:id/internal-review/attachments/:attachmentID/download", app.requireUser(), app.downloadInternalVisaAttachment)
-	router.POST("/questions/:id/committee/start", app.requireUser(), app.requireCSRF(), app.requireRole("secretary"), app.startCommitteeVote)
+	router.POST("/questions/:id/committee/start", app.requireUser(), app.requireCSRF(), app.requireRole("admin", "secretary"), app.startCommitteeVote)
 	router.POST("/questions/:id/committee/vote", app.requireUser(), app.requireCSRFWithLimit(maxAttachmentsBodySize), app.requireRole("committee"), app.submitCommitteeVote)
 	router.POST("/questions/:id/committee/votes/:voteID/withdraw", app.requireUser(), app.requireCSRF(), app.requireRole("committee"), app.withdrawCommitteeVote)
-	router.POST("/questions/:id/committee/extend", app.requireUser(), app.requireCSRF(), app.requireRole("secretary"), app.extendCommitteeVote)
-	router.POST("/questions/:id/committee/close", app.requireUser(), app.requireCSRF(), app.requireRole("secretary"), app.closeCommitteeVote)
-	router.POST("/questions/:id/committee/cancel", app.requireUser(), app.requireCSRF(), app.requireRole("secretary"), app.cancelCommitteeVote)
+	router.POST("/questions/:id/committee/extend", app.requireUser(), app.requireCSRF(), app.requireRole("admin", "secretary"), app.extendCommitteeVote)
+	router.POST("/questions/:id/committee/close", app.requireUser(), app.requireCSRF(), app.requireRole("admin", "secretary"), app.closeCommitteeVote)
+	router.POST("/questions/:id/committee/cancel", app.requireUser(), app.requireCSRF(), app.requireRole("admin", "secretary"), app.cancelCommitteeVote)
 	router.GET("/questions/:id/committee/attachments/:attachmentID/download", app.requireUser(), app.downloadCommitteeVoteAttachment)
 	router.GET("/protocols", app.requireUser(), app.listProtocols)
-	router.POST("/protocols", app.requireUser(), app.requireCSRF(), app.requireRole("secretary"), app.createProtocol)
+	router.POST("/protocols", app.requireUser(), app.requireCSRF(), app.requireRole("admin", "secretary"), app.createProtocol)
 	router.GET("/protocols/:id", app.requireUser(), app.showProtocol)
 	router.GET("/protocols/:id/word", app.requireUser(), app.downloadProtocolWord)
-	router.POST("/protocols/:id/delete", app.requireUser(), app.requireCSRF(), app.requireRole("secretary"), app.deleteProtocol)
+	router.POST("/protocols/:id/delete", app.requireUser(), app.requireCSRF(), app.requireRole("admin", "secretary"), app.deleteProtocol)
 	router.GET("/storage/check", app.requireUser(), app.checkStorage)
 	router.POST("/documents", app.requireUser(), app.requireCSRF(), app.createDocument)
 	router.GET("/documents/:id", app.requireUser(), app.showDocument)
@@ -653,7 +663,8 @@ func (app *application) migrate(ctx context.Context) error {
 		$$;
 	`
 	_, err := app.db.Exec(ctx, schema)
-	return err
+	if err != nil { return err }
+	return app.migrateManagement(ctx)
 }
 
 func (app *application) createInitialAdmin(ctx context.Context) error {
@@ -818,6 +829,7 @@ func (app *application) logout(c *gin.Context) {
 }
 
 func (app *application) dashboard(c *gin.Context) {
+	if c.MustGet("user").(user).Role == "admin" { c.Redirect(http.StatusSeeOther, "/admin"); return }
 	app.renderDashboard(c, http.StatusOK, "")
 }
 
@@ -830,6 +842,18 @@ func (app *application) requireUser() gin.HandlerFunc {
 			return
 		}
 		c.Set("user", usr)
+		if strings.HasPrefix(c.FullPath(), "/questions/:id") || strings.HasPrefix(c.FullPath(), "/documents/:id") {
+			table := "questions"
+			if strings.HasPrefix(c.FullPath(), "/documents/") { table = "documents" }
+			id, parseErr := strconv.ParseInt(c.Param("id"),10,64)
+			if parseErr == nil {
+				var archived bool
+				err := app.db.QueryRow(c.Request.Context(),"SELECT archived_at IS NOT NULL FROM "+table+" WHERE id=$1",id).Scan(&archived)
+				if err != nil && !errors.Is(err,pgx.ErrNoRows) {c.String(500,"Не удалось проверить архив");c.Abort();return}
+				c.Set("archived",archived)
+				if archived && c.Request.Method != http.MethodGet {c.String(409,"Архивный материал доступен только для просмотра");c.Abort();return}
+			}
+		}
 		if usr.MustChangePassword && c.Request.URL.Path != "/password/change" && c.Request.URL.Path != "/logout" {
 			c.Redirect(http.StatusSeeOther, "/password/change")
 			c.Abort()

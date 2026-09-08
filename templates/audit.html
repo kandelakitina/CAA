@@ -4,12 +4,14 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{ .Title }}</title>
+  <script src="/static/theme.js"></script>
   <link rel="stylesheet" href="/static/app.css">
 </head>
 <body>
   <header class="topbar">
     <div><p class="eyebrow">Neva Concert Hall</p><strong>Корпоративные согласования</strong></div>
     <div class="account">
+      {{ template "workspace-nav" . }}
 	  <a class="nav-link" href="/">Вопросы</a>
       <a class="nav-link" href="/admin/users">Пользователи</a>
       <a class="nav-link" href="/password/change">Пароль</a>

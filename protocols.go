@@ -322,7 +322,7 @@ func (app *application) showProtocol(c *gin.Context) {
 		return
 	}
 	usr := c.MustGet("user").(user)
-	view.CanDelete = usr.Role == "secretary"
+	view.CanDelete = canManageQuestions(usr)
 	c.HTML(http.StatusOK, "protocol.html", gin.H{
 		"Title": "Протокол №" + view.Number, "User": usr,
 		"CSRFToken": app.templateCSRF(c), "Protocol": view,

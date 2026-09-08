@@ -667,7 +667,7 @@ func (app *application) loadCommitteeVote(ctx context.Context, questionID int64,
 
 func loadCommitteeVoteRound(ctx context.Context, db roundHistoryDB, questionID int64, questionStatus string, usr user, selectedRoundID int64) (committeeVoteView, error) {
 	view := committeeVoteView{
-		CanStart:      usr.Role == "secretary" && (questionStatus == "ready_for_committee" || questionStatus == "rejected" || questionStatus == "no_quorum"),
+		CanStart:      canManageQuestions(usr) && (questionStatus == "ready_for_committee" || questionStatus == "rejected" || questionStatus == "no_quorum"),
 		DeadlineValue: time.Now().AddDate(0, 0, 7).Format("2006-01-02"),
 	}
 	var roundID int64
@@ -690,7 +690,7 @@ func loadCommitteeVoteRound(ctx context.Context, db roundHistoryDB, questionID i
 	}
 	view.HasRound = true
 	view.Active = status == "active"
-	view.CanManage = view.Active && usr.Role == "secretary"
+	view.CanManage = view.Active && canManageQuestions(usr)
 	view.DeadlineLabel = deadline.Format("02.01.2006")
 	now := time.Now()
 	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())

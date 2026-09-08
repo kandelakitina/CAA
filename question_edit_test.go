@@ -127,12 +127,12 @@ func TestQuestionEditHTTP(t *testing.T) {
 			router := gin.New()
 			router.LoadHTMLGlob("templates/*")
 			setUser := func(c *gin.Context) { c.Set("user", user{Role: role}) }
-			router.GET("/questions/:id/edit", setUser, app.requireRole("secretary"), app.showQuestionEdit)
-			router.POST("/questions/:id/edit", setUser, app.requireCSRF(), app.requireRole("secretary"), app.updateQuestion)
+			router.GET("/questions/:id/edit", setUser, app.requireRole("admin", "secretary"), app.showQuestionEdit)
+			router.POST("/questions/:id/edit", setUser, app.requireCSRF(), app.requireRole("admin", "secretary"), app.updateQuestion)
 			get := httptest.NewRecorder()
 			router.ServeHTTP(get, httptest.NewRequest(http.MethodGet, "/questions/invalid/edit", nil))
 			wantGet := http.StatusForbidden
-			if role == "secretary" {
+			if (role == "secretary" || role == "admin") {
 				wantGet = http.StatusBadRequest
 			}
 			if get.Code != wantGet {
@@ -148,7 +148,7 @@ func TestQuestionEditHTTP(t *testing.T) {
 			response := httptest.NewRecorder()
 			router.ServeHTTP(response, request)
 			want := http.StatusForbidden
-			if role == "secretary" && csrf {
+			if (role == "secretary" || role == "admin") && csrf {
 				want = http.StatusUnprocessableEntity
 			}
 			if response.Code != want {

@@ -92,7 +92,7 @@ if (Test-Path "$local/seaweed.pid") {
 if (!$weedProcess) {
     @{ identities = @(@{ name = 'local-test'; credentials = @(@{ accessKey = $settings.accessKey; secretKey = $settings.secretKey }); actions = @('Admin', 'Read', 'Write', 'List', 'Tagging') }) } |
         ConvertTo-Json -Depth 6 | Set-Content -LiteralPath "$local/s3.json" -Encoding utf8NoBOM
-    $arguments = @('server', '-ip=127.0.0.1', '-ip.bind=127.0.0.1', '-s3', '-s3.ip.bind=127.0.0.1', '-s3.port=18333', '-s3.port.iceberg=0', '-s3.port.lance=0', '-master.port=19333', '-volume.port=18080', '-filer.port=18888', '-master.telemetry=false', '-master.volumeSizeLimitMB=64', "-dir=`"$local/objects`"", "-s3.config=`"$local/s3.json`"")
+    $arguments = @('server', '-ip=127.0.0.1', '-ip.bind=127.0.0.1', '-s3', '-s3.ip.bind=127.0.0.1', '-s3.port=18333', '-s3.port.iceberg=0', '-s3.port.lance=0', '-master.port=19333', '-volume.port=18080', '-filer.port=18888', '-master.telemetry=false', '-master.volumeSizeLimitMB=64', '-volume.max=32', "-dir=`"$local/objects`"", "-s3.config=`"$local/s3.json`"")
     $weedProcess = Start-Process -FilePath $weed -ArgumentList $arguments -WorkingDirectory "$local/objects" -WindowStyle Hidden -PassThru -RedirectStandardOutput "$local/logs/s3.out.log" -RedirectStandardError "$local/logs/s3.err.log"
     $weedProcess.Id | Set-Content "$local/seaweed.pid"
 }

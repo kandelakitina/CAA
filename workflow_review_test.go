@@ -59,7 +59,7 @@ func TestRevisionPlanAfterCommitteeRework(t *testing.T) {
 		if err != nil || !plan.Ready || tx.sourceRound != 10 || len(plan.Files) != 1 {
 			t.Fatalf("plan=%+v source=%d err=%v", plan, tx.sourceRound, err)
 		}
-		if plan.CanRestart != (role == "secretary") {
+		if plan.CanRestart != ((role == "secretary" || role == "admin")) {
 			t.Fatal("only the secretary may restart")
 		}
 		for _, service := range plan.Files[0].Services {
@@ -138,7 +138,7 @@ func TestRepeatReviewRolesAndCSRF(t *testing.T) {
 	for _, role := range []string{"secretary", "admin", "approver", "committee", "observer"} {
 		for _, csrf := range []bool{true, false} {
 			router := gin.New()
-			router.POST("/questions/:id/internal-review/restart", func(c *gin.Context) { c.Set("user", user{Role: role}) }, app.requireCSRF(), app.requireRole("secretary"), app.restartInternalReview)
+			router.POST("/questions/:id/internal-review/restart", func(c *gin.Context) { c.Set("user", user{Role: role}) }, app.requireCSRF(), app.requireRole("admin", "secretary"), app.restartInternalReview)
 			form := url.Values{}
 			if csrf {
 				form.Set("_csrf", app.csrfDigest("session", "test-session"))
@@ -149,7 +149,7 @@ func TestRepeatReviewRolesAndCSRF(t *testing.T) {
 			response := httptest.NewRecorder()
 			router.ServeHTTP(response, request)
 			want := http.StatusForbidden
-			if role == "secretary" && csrf {
+			if (role == "secretary" || role == "admin") && csrf {
 				want = http.StatusUnprocessableEntity // Allowed through to deadline validation.
 			}
 			if response.Code != want {

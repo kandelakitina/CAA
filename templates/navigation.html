@@ -1,0 +1,6 @@
+{{ define "theme-switch" }}<button type="button" class="button-secondary theme-toggle" data-theme-toggle>Тёмная тема</button>{{ end }}
+{{ define "workspace-nav" }}
+<a class="nav-link" href="/reports/statuses">Статусы</a>
+{{ if eq .User.Role "admin" }}<a class="nav-link" href="/admin">Панель администратора</a>{{ end }}
+{{ template "theme-switch" . }}
+{{ end }}

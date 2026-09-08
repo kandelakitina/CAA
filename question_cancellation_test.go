@@ -17,7 +17,7 @@ import (
 )
 
 func TestCancelledQuestionTemplate(t *testing.T) {
-	tmpl, err := template.ParseFiles("templates/question.html")
+	tmpl, err := template.ParseFiles("templates/question.html", "templates/navigation.html")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -145,7 +145,7 @@ func TestCancelQuestionRoleAndCSRF(t *testing.T) {
 		for _, validCSRF := range []bool{true, false} {
 			router := gin.New()
 			// An empty reason reaches the real handler without requiring a database.
-			router.POST("/questions/:id/cancel", func(c *gin.Context) { c.Set("user", user{Role: role}) }, app.requireCSRF(), app.requireRole("secretary"), app.cancelQuestion)
+			router.POST("/questions/:id/cancel", func(c *gin.Context) { c.Set("user", user{Role: role}) }, app.requireCSRF(), app.requireRole("admin", "secretary"), app.cancelQuestion)
 			form := url.Values{}
 			if validCSRF {
 				form.Set("_csrf", app.csrfDigest("session", "test-session"))
@@ -156,7 +156,7 @@ func TestCancelQuestionRoleAndCSRF(t *testing.T) {
 			response := httptest.NewRecorder()
 			router.ServeHTTP(response, request)
 			want := http.StatusForbidden
-			if role == "secretary" && validCSRF {
+			if (role == "secretary" || role == "admin") && validCSRF {
 				want = http.StatusUnprocessableEntity
 			}
 			if response.Code != want {

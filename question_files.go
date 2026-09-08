@@ -262,7 +262,7 @@ func questionStatusAfterFileUpload(status string) (string, bool) {
 }
 
 func canUploadQuestionFiles(usr user) bool {
-	return usr.Role == "secretary" || (usr.Role == "approver" && validInternalService(usr.InternalService))
+	return canManageQuestions(usr) || (usr.Role == "approver" && validInternalService(usr.InternalService))
 }
 
 func (app *application) requireQuestionFileUploader() gin.HandlerFunc {
@@ -416,7 +416,7 @@ func (app *application) saveQuestionFileVersion(c *gin.Context, fileID int64) {
 	approvalStatus := "pending"
 	var reviewedBy any
 	var reviewedAt any
-	if usr.Role == "secretary" {
+	if canManageQuestions(usr) {
 		approvalStatus = "confirmed"
 		reviewedBy = usr.ID
 		reviewedAt = time.Now()
@@ -635,7 +635,7 @@ func (app *application) loadQuestionFiles(ctx context.Context, questionID int64,
 		item.CreatedLabel = created.Format("02.01.2006 15:04")
 		item.StatusLabel = questionFileVersionStatusLabel(item.Status)
 		item.IsCurrent = !files[index].Excluded && item.Status == "confirmed" && item.VersionNo == files[index].CurrentVersionNo
-		item.CanReview = !files[index].Excluded && usr.Role == "secretary" && item.Status == "pending"
+		item.CanReview = !files[index].Excluded && canManageQuestions(usr) && item.Status == "pending"
 		files[index].HasPending = files[index].HasPending || item.Status == "pending"
 		files[index].Versions = append(files[index].Versions, item)
 	}

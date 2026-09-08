@@ -143,7 +143,7 @@ func TestSelectedCommitteeRoundPreservesRosterAndWithdrawals(t *testing.T) {
 }
 
 func TestRoundHistoryTemplateReadOnly(t *testing.T) {
-	tmpl, err := template.ParseFiles("templates/round-history.html")
+	tmpl, err := template.ParseFiles("templates/round-history.html", "templates/navigation.html")
 	if err != nil {
 		t.Fatal(err)
 	}
