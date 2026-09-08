@@ -31,6 +31,11 @@ type questionFileItem struct {
 	CurrentVersionNo int
 	HasPending       bool
 	Versions         []questionFileVersionItem
+	Excluded         bool
+	CanExclude       bool
+	ExclusionReason  string
+	ExcludedBy       string
+	ExcludedLabel    string
 }
 
 type questionFileVersionItem struct {
@@ -487,7 +492,7 @@ func (app *application) reviewQuestionFileVersion(c *gin.Context, confirm bool) 
 		FROM question_file_versions v
 		JOIN question_files f ON f.id = v.question_file_id
 		JOIN questions q ON q.id = f.question_id
-		WHERE q.id = $1 AND f.id = $2 AND v.version_no = $3
+		WHERE q.id = $1 AND f.id = $2 AND v.version_no = $3 AND f.status = 'active'
 		FOR UPDATE OF v, f, q
 	`, questionID, fileID, versionNo).Scan(&title, &approvalStatus, &questionStatus)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -562,9 +567,10 @@ func parseQuestionFileVersionParams(c *gin.Context) (int64, int64, int, bool) {
 
 func (app *application) loadQuestionFiles(ctx context.Context, questionID int64, usr user) ([]questionFileItem, error) {
 	rows, err := app.db.Query(ctx, `
-		SELECT id, title, category, COALESCE(current_version_no, 0)
-		FROM question_files WHERE question_id = $1 AND status = 'active'
-		ORDER BY created_at, id
+		SELECT id, title, category, COALESCE(current_version_no, 0), status = 'excluded',
+		       exclusion_reason, excluded_by_name, excluded_at
+		FROM question_files WHERE question_id = $1
+		ORDER BY (status = 'excluded'), created_at, id
 	`, questionID)
 	if err != nil {
 		return nil, err
@@ -575,8 +581,13 @@ func (app *application) loadQuestionFiles(ctx context.Context, questionID int64,
 	for rows.Next() {
 		var item questionFileItem
 		var category string
-		if err := rows.Scan(&item.ID, &item.Title, &category, &item.CurrentVersionNo); err != nil {
+		var excludedAt *time.Time
+		if err := rows.Scan(&item.ID, &item.Title, &category, &item.CurrentVersionNo, &item.Excluded,
+			&item.ExclusionReason, &item.ExcludedBy, &excludedAt); err != nil {
 			return nil, err
+		}
+		if excludedAt != nil {
+			item.ExcludedLabel = excludedAt.Format("02.01.2006 15:04")
 		}
 		item.CategoryLabel = questionFileCategoryLabel(category)
 		indexes[item.ID] = len(files)
@@ -613,8 +624,8 @@ func (app *application) loadQuestionFiles(ctx context.Context, questionID int64,
 		item.SizeLabel = formatBytes(size)
 		item.CreatedLabel = created.Format("02.01.2006 15:04")
 		item.StatusLabel = questionFileVersionStatusLabel(item.Status)
-		item.IsCurrent = item.Status == "confirmed" && item.VersionNo == files[index].CurrentVersionNo
-		item.CanReview = usr.Role == "secretary" && item.Status == "pending"
+		item.IsCurrent = !files[index].Excluded && item.Status == "confirmed" && item.VersionNo == files[index].CurrentVersionNo
+		item.CanReview = !files[index].Excluded && usr.Role == "secretary" && item.Status == "pending"
 		files[index].HasPending = files[index].HasPending || item.Status == "pending"
 		files[index].Versions = append(files[index].Versions, item)
 	}

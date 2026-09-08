@@ -132,6 +132,7 @@ func (r *decisionTestRows) Err() error             { return nil }
 
 type decisionTestTx struct {
 	pgx.Tx
+	excludedSinceRound                                                                  bool
 	status                                                                              string
 	active, noHistory, missing, stale, rejected, changedFile, missingService, failAudit bool
 	pendingUploads, pendingRequirements, carried                                        int
@@ -155,6 +156,8 @@ func (tx *decisionTestTx) QueryRow(_ context.Context, sql string, args ...any) p
 			updated = updated.Add(time.Second)
 		}
 		return decisionTestRow{"Вопрос", "Прежняя формулировка", tx.status, "budget", updated}
+	case strings.Contains(sql, "f.excluded_at"):
+		return decisionTestRow{tx.excludedSinceRound}
 	case strings.Contains(sql, "SELECT EXISTS"):
 		return decisionTestRow{tx.active}
 	case strings.Contains(sql, "SELECT id FROM internal_review_rounds"):
@@ -261,6 +264,8 @@ func TestDecisionRevisionTransaction(t *testing.T) {
 		{name: "pending uploads", tx: decisionTestTx{status: "ready_for_committee", pendingUploads: 1}, wantErr: true},
 		{name: "missing service", tx: decisionTestTx{status: "ready_for_committee", missingService: true}, wantErr: true},
 		{name: "audit failure", tx: decisionTestTx{status: "ready_for_committee", failAudit: true}, wantErr: true},
+		{name: "exclusion blocks old visa carry", tx: decisionTestTx{status: "draft", excludedSinceRound: true}, policy: "carry_positive", wantErr: true},
+		{name: "exclusion permits full recheck", tx: decisionTestTx{status: "draft", excludedSinceRound: true}, policy: "recheck_all", wantPending: 4},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			input := validDecisionRevisionInput()

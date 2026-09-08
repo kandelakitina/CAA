@@ -114,6 +114,18 @@ func validateInternalReviewStart(questionType string, deadline, today time.Time,
 	if pendingUploads > 0 {
 		return errors.New("Сначала подтвердите или отклоните все ожидающие загрузки")
 	}
+	if err := validateQuestionBundle(questionType, files); err != nil {
+		return err
+	}
+	for _, service := range requiredInternalServices {
+		if activeServices[service] < 1 {
+			return fmt.Errorf("Нет активного представителя: %s", internalServiceLabel(service))
+		}
+	}
+	return nil
+}
+
+func validateQuestionBundle(questionType string, files []reviewStartFile) error {
 	if len(files) == 0 {
 		return errors.New("Добавьте хотя бы один официальный файл")
 	}
@@ -126,11 +138,6 @@ func validateInternalReviewStart(questionType string, deadline, today time.Time,
 	}
 	if questionType == "internal_document" && !categories["lna_draft"] {
 		return errors.New("Для внутреннего документа добавьте проект ЛНА")
-	}
-	for _, service := range requiredInternalServices {
-		if activeServices[service] < 1 {
-			return fmt.Errorf("Нет активного представителя: %s", internalServiceLabel(service))
-		}
 	}
 	return nil
 }

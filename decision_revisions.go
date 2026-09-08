@@ -201,6 +201,17 @@ func (app *application) createDecisionRevisionTransaction(ctx context.Context, t
 	if input.Text == state.Text {
 		return revisionRule(422, "Новая формулировка совпадает с текущей")
 	}
+	if input.Policy == "carry_positive" {
+		var bundleReduced bool
+		if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM question_files f
+			JOIN internal_review_rounds source ON source.id = $2
+			WHERE f.question_id = $1 AND f.status = 'excluded' AND f.excluded_at >= source.started_at)`, id, state.SourceRoundID).Scan(&bundleReduced); err != nil {
+			return err
+		}
+		if bundleReduced {
+			return revisionRule(422, "После исключения файлов требуется полное согласование. Выберите запрос всех виз заново")
+		}
+	}
 	files, err := loadRevisionFiles(ctx, tx, id)
 	if err != nil {
 		return err

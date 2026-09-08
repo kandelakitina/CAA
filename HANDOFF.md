@@ -53,13 +53,29 @@
   round is created atomically and auto-completes when all visas are carried.
   History records both texts, author, reason, policy and round references.
   Committee start checks a question timestamp token to reject stale forms.
+- File exclusion is implemented at POST `/questions/:id/files/:fileID/exclude`,
+  secretary-only with CSRF, a mandatory reason and a stale-question check.
+  Allowed between rounds in draft/revision-required/ready/rejected/no-quorum.
+  Active rounds, approved/cancelled questions, already excluded files and pending
+  versions are blocked. Removing an official file must leave a mandatory bundle;
+  never-official rejected uploads can be excluded from incomplete drafts.
+  All exclusions return the question to draft for full internal review. Decision
+  revisions cannot carry visas from a round predating file exclusion.
+  Excluded files/versions remain visible and downloadable; no new uploads or
+  confirmation/rejection is allowed. There is no restore action yet.
 
 ## Recommended next session
 
-Next: implement file exclusion without deleting history, with mandatory-bundle
-validation and stage restrictions. Draft editing and post-review decision-text
-revisions are complete. Post-review revisions change only the decision text;
-other metadata remains protected after the first review.
+Next: inspect and implement browsing of all internal/Committee rounds, since the
+current card displays the latest round. Preserve authorization and frozen data.
+Then review the complete workflow against README before adding notifications,
+which still need separate requirements. Post-review revisions change only the
+decision text; other metadata remains protected after the first review.
+
+File exclusion migrations add `question_files.exclusion_reason`, `excluded_at`
+and `excluded_by_name` with IF NOT EXISTS. Existing `status = 'excluded'` is used;
+no versions, review records or S3 objects are deleted. Mandatory-bundle checks are
+shared with internal-review start. No new dependencies or configuration.
 
 Decision revision migrations add immutable `decision_text_revisions` and nullable
 `internal_review_rounds.frozen_decision_text`. New initial, repeat and text-revision

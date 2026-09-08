@@ -210,6 +210,7 @@ func auditEventLabel(eventType string) string {
 		"question.decision_revised":       "Создана редакция решения",
 		"question.cancelled":              "Отменён вопрос",
 		"question.file_version_uploaded":  "Загружена версия файла вопроса",
+		"question.file_excluded":          "Файл исключён из комплекта",
 		"question.file_version_confirmed": "Подтверждена версия файла вопроса",
 		"question.file_version_rejected":  "Отклонена версия файла вопроса",
 		"internal_review.started":         "Запущено внутреннее согласование",

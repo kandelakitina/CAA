@@ -101,7 +101,23 @@
 		  {{ range .Files }}{{ $file := . }}
 		  <article class="question-file-card">
 			<div class="document-heading"><div><h3>{{ .Title }}</h3><span class="file-category">{{ .CategoryLabel }}</span></div>{{ if gt .CurrentVersionNo 0 }}<span class="status-pill">Версия {{ .CurrentVersionNo }}</span>{{ end }}</div>
-			{{ if and $.CanUploadFiles (not .HasPending) }}
+			{{ if .Excluded }}
+			<p class="status-pill">Исключён из комплекта</p>
+			<p>Причина: {{ .ExclusionReason }}</p><p>{{ .ExcludedBy }} · {{ .ExcludedLabel }}</p>
+			<p class="form-hint">Версии сохранены для истории и не участвуют в новых согласованиях.</p>
+			{{ end }}
+			{{ if .CanExclude }}
+			<details class="upload-panel compact-panel"><summary>Исключить файл из комплекта</summary>
+			  <p>Все версии останутся в истории. Вопрос вернётся в черновик и потребует полного внутреннего согласования оставшегося комплекта.</p>
+			  <form class="form-stack" method="post" action="/questions/{{ $.Question.ID }}/files/{{ .ID }}/exclude">
+			    <input type="hidden" name="_csrf" value="{{ $.CSRFToken }}">
+			    <input type="hidden" name="question_context" value="{{ $.QuestionContextToken }}">
+			    <label>Причина исключения<textarea name="reason" rows="2" maxlength="2000" required></textarea></label>
+			    <button type="submit" class="button-danger">Исключить файл</button>
+			  </form>
+			</details>
+			{{ end }}
+			{{ if and $.CanUploadFiles (not .HasPending) (not .Excluded) }}
 			<details class="upload-panel compact-panel">
 			  <summary>Загрузить новую версию</summary>
 			  <form class="form-stack" method="post" action="/questions/{{ $.Question.ID }}/files/{{ .ID }}/versions" enctype="multipart/form-data">
@@ -110,7 +126,7 @@
 				<button type="submit">Загрузить версию</button>
 			  </form>
 			</details>
-			{{ else if .HasPending }}<p class="form-hint">Новая загрузка станет доступна после решения секретаря по ожидающей версии.</p>
+			{{ else if and .HasPending (not .Excluded) }}<p class="form-hint">Новая загрузка станет доступна после решения секретаря по ожидающей версии.</p>
 			{{ end }}
 			<div class="version-list">
 			  {{ range .Versions }}

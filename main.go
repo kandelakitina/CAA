@@ -106,6 +106,7 @@ func main() {
 	router.POST("/questions/:id/edit", app.requireUser(), app.requireCSRF(), app.requireRole("secretary"), app.updateQuestion)
 	router.POST("/questions/:id/cancel", app.requireUser(), app.requireCSRF(), app.requireRole("secretary"), app.cancelQuestion)
 	router.POST("/questions/:id/files", app.requireUser(), app.requireCSRF(), app.requireQuestionFileUploader(), app.uploadQuestionFile)
+	router.POST("/questions/:id/files/:fileID/exclude", app.requireUser(), app.requireCSRF(), app.requireRole("secretary"), app.excludeQuestionFile)
 	router.POST("/questions/:id/files/:fileID/versions", app.requireUser(), app.requireCSRF(), app.requireQuestionFileUploader(), app.uploadQuestionFileVersion)
 	router.GET("/questions/:id/files/:fileID/versions/:version/download", app.requireUser(), app.downloadQuestionFileVersion)
 	router.POST("/questions/:id/files/:fileID/versions/:version/confirm", app.requireUser(), app.requireCSRF(), app.requireRole("secretary"), app.confirmQuestionFileVersion)
@@ -306,6 +307,9 @@ func (app *application) migrate(ctx context.Context) error {
 
 		CREATE INDEX IF NOT EXISTS question_files_question_idx
 			ON question_files(question_id, created_at, id);
+		ALTER TABLE question_files ADD COLUMN IF NOT EXISTS exclusion_reason TEXT NOT NULL DEFAULT '';
+		ALTER TABLE question_files ADD COLUMN IF NOT EXISTS excluded_at TIMESTAMPTZ;
+		ALTER TABLE question_files ADD COLUMN IF NOT EXISTS excluded_by_name TEXT NOT NULL DEFAULT '';
 		ALTER TABLE question_files ALTER COLUMN current_version_no DROP DEFAULT;
 		ALTER TABLE question_files ALTER COLUMN current_version_no DROP NOT NULL;
 		UPDATE question_files SET current_version_no = NULL WHERE current_version_no = 0;

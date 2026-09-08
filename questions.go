@@ -255,6 +255,9 @@ func (app *application) showQuestion(c *gin.Context) {
 	}
 	canUpload := canUploadQuestionFiles(usr)
 	canUpload = canUpload && (status == "draft" || status == "internal_review" || status == "revision_required" || status == "rejected" || status == "no_quorum")
+	for i := range files {
+		files[i].CanExclude = usr.Role == "secretary" && canExcludeQuestionFile(status) && !files[i].Excluded && !files[i].HasPending
+	}
 	if status == "cancelled" {
 		for i := range files {
 			for j := range files[i].Versions {

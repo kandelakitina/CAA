@@ -40,6 +40,7 @@
 			<option value="question.decision_revised" {{ if eq .Filters.EventType "question.decision_revised" }}selected{{ end }}>Редакция решения</option>
 			<option value="question.cancelled" {{ if eq .Filters.EventType "question.cancelled" }}selected{{ end }}>Отмена вопроса</option>
 			<option value="question.file_version_uploaded" {{ if eq .Filters.EventType "question.file_version_uploaded" }}selected{{ end }}>Загрузка файла вопроса</option>
+			<option value="question.file_excluded" {{ if eq .Filters.EventType "question.file_excluded" }}selected{{ end }}>Исключение файла из комплекта</option>
 			<option value="question.file_version_confirmed" {{ if eq .Filters.EventType "question.file_version_confirmed" }}selected{{ end }}>Подтверждение файла вопроса</option>
 			<option value="question.file_version_rejected" {{ if eq .Filters.EventType "question.file_version_rejected" }}selected{{ end }}>Отклонение файла вопроса</option>
 			<option value="internal_review.started" {{ if eq .Filters.EventType "internal_review.started" }}selected{{ end }}>Запуск внутреннего согласования</option>
