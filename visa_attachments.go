@@ -17,6 +17,7 @@ import (
 )
 
 const maxVisaAttachments = 10
+const maxAttachmentsBodySize = maxVisaAttachments*maxDocumentSize + (1 << 20)
 
 type visaAttachmentItem struct {
 	ID        int64

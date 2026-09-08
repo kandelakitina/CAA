@@ -121,23 +121,32 @@ func buildRevisionPlan(files []revisionFile, sources map[string]revisionSourceVi
 }
 
 func (app *application) loadRevisionPlan(ctx context.Context, questionID int64, questionStatus string, usr user) (revisionPlanView, error) {
+	return loadRevisionPlan(ctx, app.db, questionID, questionStatus, usr)
+}
+
+type revisionPlanDB interface {
+	revisionQueryer
+	QueryRow(context.Context, string, ...any) pgx.Row
+}
+
+func loadRevisionPlan(ctx context.Context, db revisionPlanDB, questionID int64, questionStatus string, usr user) (revisionPlanView, error) {
 	if questionStatus != "revision_required" {
 		return revisionPlanView{}, nil
 	}
 	var previousRoundID int64
-	err := app.db.QueryRow(ctx, `
+	err := db.QueryRow(ctx, `
 		SELECT id FROM internal_review_rounds
-		WHERE question_id = $1 AND status = 'completed' AND outcome = 'revision_required'
+		WHERE question_id = $1 AND status = 'completed'
 		ORDER BY completed_at DESC, id DESC LIMIT 1
 	`, questionID).Scan(&previousRoundID)
 	if err != nil {
 		return revisionPlanView{}, err
 	}
-	files, err := loadRevisionFiles(ctx, app.db, questionID)
+	files, err := loadRevisionFiles(ctx, db, questionID)
 	if err != nil {
 		return revisionPlanView{}, err
 	}
-	sources, err := loadRevisionSourceVisas(ctx, app.db, previousRoundID)
+	sources, err := loadRevisionSourceVisas(ctx, db, previousRoundID)
 	if err != nil {
 		return revisionPlanView{}, err
 	}
@@ -148,7 +157,7 @@ func (app *application) loadRevisionPlan(ctx context.Context, questionID int64, 
 	plan.CanRestart = usr.Role == "secretary"
 	plan.DeadlineValue = time.Now().AddDate(0, 0, 7).Format("2006-01-02")
 	var pending int
-	if err := app.db.QueryRow(ctx, `
+	if err := db.QueryRow(ctx, `
 		SELECT COUNT(*) FROM question_file_versions v
 		JOIN question_files f ON f.id = v.question_file_id
 		WHERE f.question_id = $1 AND f.status = 'active' AND v.approval_status = 'pending'
@@ -238,12 +247,17 @@ func (app *application) restartInternalReview(c *gin.Context) {
 		return
 	}
 	defer tx.Rollback(c.Request.Context())
+	app.restartInternalReviewInTx(c, tx, usr, questionID, deadline, selected)
+}
+
+func (app *application) restartInternalReviewInTx(c *gin.Context, tx pgx.Tx, usr user, questionID int64, deadline time.Time, selected map[string]bool) {
 	if err := lockUserAssignments(c, tx); err != nil {
 		c.String(http.StatusInternalServerError, "Не удалось проверить назначения пользователей")
 		return
 	}
 	var title, status string
-	err = tx.QueryRow(c.Request.Context(), `SELECT title, status FROM questions WHERE id = $1 FOR UPDATE`, questionID).Scan(&title, &status)
+	var updatedAt time.Time
+	err := tx.QueryRow(c.Request.Context(), `SELECT title, status, updated_at FROM questions WHERE id = $1 FOR UPDATE`, questionID).Scan(&title, &status, &updatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		c.String(http.StatusNotFound, "Вопрос не найден")
 		return
@@ -256,10 +270,14 @@ func (app *application) restartInternalReview(c *gin.Context) {
 		c.String(http.StatusConflict, "Повторное согласование сейчас недоступно")
 		return
 	}
+	if !committeeContextMatches(c.PostForm("question_context"), updatedAt) {
+		c.String(http.StatusConflict, "Вопрос изменился. Обновите карточку и проверьте комплект и перенос виз перед повторным согласованием")
+		return
+	}
 	var previousRoundID int64
 	err = tx.QueryRow(c.Request.Context(), `
 		SELECT id FROM internal_review_rounds
-		WHERE question_id = $1 AND status = 'completed' AND outcome = 'revision_required'
+		WHERE question_id = $1 AND status = 'completed'
 		ORDER BY completed_at DESC, id DESC LIMIT 1 FOR UPDATE
 	`, questionID).Scan(&previousRoundID)
 	if err != nil {
@@ -361,6 +379,9 @@ func (app *application) restartInternalReview(c *gin.Context) {
 			TargetLabel: title, QuestionID: &questionID,
 			Details: fmt.Sprintf("Раунд №%d после доработки: новых виз %d, перенесено %d", roundID, freshCount, carriedCount),
 		})
+	}
+	if err == nil {
+		err = app.finishInternalReviewIfComplete(c.Request.Context(), tx, usr, questionID, roundID, title)
 	}
 	if err == nil {
 		err = tx.Commit(c.Request.Context())

@@ -75,10 +75,13 @@
 
 ## Recommended next session
 
-Next: review the complete workflow against README and fix confirmed gaps before
-adding features. Then arrange an explicitly authorized integration check with
-real PostgreSQL/S3; no separate test environment currently exists. These are the
-two remaining verification stages after round history. Notifications remain a
+The source-level workflow review is complete; see WORKFLOW_REVIEW_2026-09-08.md.
+Fixed rework after positive internal review / unsuccessful Committee voting,
+uploads after Committee cancellation, all-carried round completion, stale repeat
+forms, and the combined attachment request limit. No migrations were added.
+Next: arrange an explicitly authorized integration check with real PostgreSQL/S3;
+no separate test environment currently exists. This is the remaining verification
+stage. Notifications remain a
 separate requirements/implementation phase. Post-review revisions change only
 decision text; other metadata remains protected after the first review.
 

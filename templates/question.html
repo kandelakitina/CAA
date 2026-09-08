@@ -166,7 +166,8 @@
 	  {{ if .RevisionPlan.Available }}
 	  <section class="revision-section">
 		<div class="section-heading"><div><p class="eyebrow">После замечаний</p><h2>Повторное согласование</h2></div></div>
-		{{ if .RevisionPlan.CanRestart }}<form class="form-stack" method="post" action="/questions/{{ .Question.ID }}/internal-review/restart"><input type="hidden" name="_csrf" value="{{ .CSRFToken }}">{{ end }}
+		{{ if .RevisionPlan.CanRestart }}<form class="form-stack" method="post" action="/questions/{{ .Question.ID }}/internal-review/restart"><input type="hidden" name="_csrf" value="{{ .CSRFToken }}"><input type="hidden" name="question_context" value="{{ .QuestionContextToken }}">{{ end }}
+		<p class="form-hint">Положительные визы служб, которым не назначено повторное согласование, будут перенесены со ссылкой на исходную версию. Если повторные визы не нужны, раунд завершится автоматически.</p>
 		{{ if .RevisionPlan.BlockReason }}<div class="alert">{{ .RevisionPlan.BlockReason }}</div>{{ end }}
 		<div class="revision-file-list">
 		  {{ range .RevisionPlan.Files }}

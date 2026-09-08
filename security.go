@@ -100,8 +100,12 @@ func (app *application) requireLoginCSRF() gin.HandlerFunc {
 }
 
 func (app *application) requireCSRF() gin.HandlerFunc {
+	return app.requireCSRFWithLimit(maxFormBodySize)
+}
+
+func (app *application) requireCSRFWithLimit(bodyLimit int64) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxFormBodySize)
+		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, bodyLimit)
 		sessionToken, err := c.Cookie("session_token")
 		if err != nil || !secureTokenEqual(c.PostForm("_csrf"), app.csrfDigest("session", sessionToken)) {
 			c.String(http.StatusForbidden, "Форма устарела. Обновите страницу и повторите действие")

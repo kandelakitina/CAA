@@ -253,8 +253,8 @@ func (app *application) showQuestion(c *gin.Context) {
 		c.String(http.StatusInternalServerError, "Не удалось загрузить комплект файлов")
 		return
 	}
-	canUpload := canUploadQuestionFiles(usr)
-	canUpload = canUpload && (status == "draft" || status == "internal_review" || status == "revision_required" || status == "rejected" || status == "no_quorum")
+	_, uploadAllowed := questionStatusAfterFileUpload(status)
+	canUpload := canUploadQuestionFiles(usr) && uploadAllowed
 	for i := range files {
 		files[i].CanExclude = usr.Role == "secretary" && canExcludeQuestionFile(status) && !files[i].Excluded && !files[i].HasPending
 	}

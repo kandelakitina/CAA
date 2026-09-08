@@ -248,6 +248,19 @@ func validateXLSX(file multipart.File, size int64) error {
 	return nil
 }
 
+// A material change after review always requires an explicit repeat round,
+// including when a Committee round was cancelled back to ready_for_committee.
+func questionStatusAfterFileUpload(status string) (string, bool) {
+	switch status {
+	case "draft", "internal_review", "revision_required":
+		return status, true
+	case "ready_for_committee", "rejected", "no_quorum":
+		return "revision_required", true
+	default:
+		return status, false
+	}
+}
+
 func canUploadQuestionFiles(usr user) bool {
 	return usr.Role == "secretary" || (usr.Role == "approver" && validInternalService(usr.InternalService))
 }
@@ -328,7 +341,8 @@ func (app *application) saveQuestionFileVersion(c *gin.Context, fileID int64) {
 		c.String(http.StatusInternalServerError, "Не удалось загрузить вопрос")
 		return
 	}
-	if questionStatus != "draft" && questionStatus != "internal_review" && questionStatus != "revision_required" && questionStatus != "rejected" && questionStatus != "no_quorum" {
+	newQuestionStatus, allowed := questionStatusAfterFileUpload(questionStatus)
+	if !allowed {
 		c.String(http.StatusConflict, "На текущем этапе комплект вопроса изменять нельзя")
 		return
 	}
@@ -421,10 +435,6 @@ func (app *application) saveQuestionFileVersion(c *gin.Context, fileID int64) {
 		err = replaceActiveInternalReviewFileVersion(ctx, tx, questionID, fileID, nextVersion)
 	}
 	if err == nil {
-		newQuestionStatus := questionStatus
-		if questionStatus == "rejected" || questionStatus == "no_quorum" {
-			newQuestionStatus = "revision_required"
-		}
 		_, err = tx.Exec(ctx, `UPDATE questions SET status = $2, updated_at = NOW() WHERE id = $1`, questionID, newQuestionStatus)
 	}
 	if err == nil {
