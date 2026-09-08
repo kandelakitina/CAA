@@ -52,6 +52,8 @@
 			<option value="committee_vote.extended" {{ if eq .Filters.EventType "committee_vote.extended" }}selected{{ end }}>Продление голосования Комитета</option>
 			<option value="committee_vote.completed" {{ if eq .Filters.EventType "committee_vote.completed" }}selected{{ end }}>Завершение голосования Комитета</option>
 			<option value="committee_vote.cancelled" {{ if eq .Filters.EventType "committee_vote.cancelled" }}selected{{ end }}>Отмена голосования Комитета</option>
+			<option value="protocol.created" {{ if eq .Filters.EventType "protocol.created" }}selected{{ end }}>Формирование протокола</option>
+			<option value="protocol.deleted" {{ if eq .Filters.EventType "protocol.deleted" }}selected{{ end }}>Удаление протокола</option>
             <option value="document.created" {{ if eq .Filters.EventType "document.created" }}selected{{ end }}>Создание документа</option>
             <option value="document.version_uploaded" {{ if eq .Filters.EventType "document.version_uploaded" }}selected{{ end }}>Новая версия</option>
             <option value="approval.started" {{ if eq .Filters.EventType "approval.started" }}selected{{ end }}>Запуск согласования</option>

@@ -222,6 +222,8 @@ func auditEventLabel(eventType string) string {
 		"committee_vote.extended":         "Продлён срок голосования Комитета",
 		"committee_vote.completed":        "Завершено голосование Комитета",
 		"committee_vote.cancelled":        "Отменено голосование Комитета",
+		"protocol.created":                "Сформирован протокол",
+		"protocol.deleted":                "Удалён протокол",
 		"document.created":                "Создан документ",
 		"document.version_uploaded":       "Загружена версия документа",
 		"approval.started":                "Запущено согласование",

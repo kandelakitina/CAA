@@ -204,6 +204,36 @@ button:hover { background: #7890ff; }
 .audit-event, .audit-actor { display: grid; align-content: start; gap: 0.25rem; min-width: 0; }
 .audit-event span, .audit-event small, .audit-actor span { color: #8393ab; overflow-wrap: anywhere; }
 .audit-event small, .audit-actor span { font-size: 0.78rem; }
+.protocol-builder { margin-bottom: 1.5rem; }
+.protocol-candidates { display: grid; gap: 0.8rem; }
+.protocol-candidate { display: grid; grid-template-columns: minmax(15rem, 1fr) 9rem; gap: 0.75rem 1rem; align-items: end; padding: 1rem; border: 1px solid #33445f; border-radius: 0.85rem; background: rgba(12, 22, 39, 0.55); }
+.protocol-candidate > p { grid-column: 1 / -1; margin: 0; color: #aeb9ca; line-height: 1.45; white-space: pre-wrap; }
+.protocol-page { max-width: 72rem; }
+.protocol-sheet { padding: clamp(1.2rem, 4vw, 3.5rem); }
+.protocol-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 1rem; }
+.protocol-toolbar .back-link { margin: 0; }
+.protocol-kicker { margin: 2rem 0 0.4rem; color: #aebeff; text-align: center; font-weight: 900; letter-spacing: 0.08em; }
+.protocol-sheet > h1 { margin-top: 0; text-align: center; }
+.protocol-meta { display: grid; grid-template-columns: repeat(2, minmax(14rem, 1fr)); gap: 0.8rem; margin: 2rem 0; }
+.protocol-meta div { display: grid; gap: 0.3rem; padding: 0.85rem; border: 1px solid #33445f; border-radius: 0.75rem; }
+.protocol-meta span, .protocol-vote span, .protocol-vote small { color: #8393ab; font-size: 0.82rem; }
+.protocol-agenda { padding: 1rem 1.2rem; border-radius: 0.9rem; background: rgba(91, 120, 255, 0.08); }
+.protocol-agenda a { color: #dbe5f5; }
+.protocol-question { margin-top: 2rem; padding-top: 2rem; border-top: 1px solid #33445f; }
+.protocol-question h2 { margin-top: 0.25rem; }
+.protocol-text { margin-top: 1rem; }
+.protocol-text p { white-space: pre-wrap; }
+.protocol-votes { margin-top: 1.25rem; border: 1px solid #33445f; border-radius: 0.8rem; overflow: hidden; }
+.protocol-vote { display: grid; grid-template-columns: minmax(12rem, 0.8fr) minmax(14rem, 1.2fr); gap: 1rem; padding: 0.85rem 1rem; border-bottom: 1px solid #33445f; }
+.protocol-vote:last-child { border-bottom: 0; }
+.protocol-vote > div { display: grid; align-content: start; gap: 0.3rem; }
+.protocol-vote p { margin: 0; color: #cbd5e1; white-space: pre-wrap; }
+.protocol-vote--head { background: rgba(36, 50, 74, 0.55); }
+.protocol-outcome { padding: 0.8rem 1rem; border-radius: 0.7rem; background: rgba(52, 211, 153, 0.1); color: #86efac; }
+.protocol-signatures { display: grid; gap: 1.5rem; margin-top: 3rem; }
+.protocol-signatures p { display: flex; justify-content: space-between; gap: 2rem; }
+.protocol-delete { display: grid; justify-items: start; gap: 0.5rem; margin-top: 3rem; padding-top: 1.5rem; border-top: 1px solid rgba(248, 113, 113, 0.3); }
+.protocol-delete small { color: #8393ab; }
 
 @media (max-width: 680px) {
   .topbar { flex-direction: column; align-items: flex-start; }
@@ -223,4 +253,7 @@ button:hover { background: #7890ff; }
   .decision-block { justify-items: start; }
 	.audit-row { grid-template-columns: 1fr; }
 	.question-money-fields { grid-template-columns: 1fr; }
+	.protocol-candidate, .protocol-meta, .protocol-vote { grid-template-columns: 1fr; }
+	.protocol-candidate > p { grid-column: 1; }
+	.protocol-signatures p { display: grid; gap: 0.4rem; }
 }

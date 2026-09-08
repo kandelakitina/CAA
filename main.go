@@ -119,6 +119,11 @@ func main() {
 	router.POST("/questions/:id/committee/close", app.requireUser(), app.requireCSRF(), app.requireRole("secretary"), app.closeCommitteeVote)
 	router.POST("/questions/:id/committee/cancel", app.requireUser(), app.requireCSRF(), app.requireRole("secretary"), app.cancelCommitteeVote)
 	router.GET("/questions/:id/committee/attachments/:attachmentID/download", app.requireUser(), app.downloadCommitteeVoteAttachment)
+	router.GET("/protocols", app.requireUser(), app.listProtocols)
+	router.POST("/protocols", app.requireUser(), app.requireCSRF(), app.requireRole("secretary"), app.createProtocol)
+	router.GET("/protocols/:id", app.requireUser(), app.showProtocol)
+	router.GET("/protocols/:id/word", app.requireUser(), app.downloadProtocolWord)
+	router.POST("/protocols/:id/delete", app.requireUser(), app.requireCSRF(), app.requireRole("secretary"), app.deleteProtocol)
 	router.GET("/storage/check", app.requireUser(), app.checkStorage)
 	router.POST("/documents", app.requireUser(), app.requireCSRF(), app.createDocument)
 	router.GET("/documents/:id", app.requireUser(), app.showDocument)
@@ -511,6 +516,44 @@ func (app *application) migrate(ctx context.Context) error {
 
 		CREATE INDEX IF NOT EXISTS committee_vote_attachments_vote_idx
 			ON committee_vote_attachments(vote_id, id);
+
+		CREATE TABLE IF NOT EXISTS protocol_sequences (
+			year INTEGER PRIMARY KEY CHECK (year >= 2000),
+			last_number INTEGER NOT NULL CHECK (last_number > 0)
+		);
+
+		CREATE TABLE IF NOT EXISTS protocols (
+			id BIGSERIAL PRIMARY KEY,
+			year INTEGER NOT NULL CHECK (year >= 2000),
+			sequence_no INTEGER NOT NULL CHECK (sequence_no > 0),
+			meeting_at TIMESTAMPTZ NOT NULL,
+			chair_name TEXT NOT NULL CHECK (length(btrim(chair_name)) > 0),
+			secretary_user_id BIGINT NOT NULL REFERENCES users(id),
+			secretary_name TEXT NOT NULL CHECK (length(btrim(secretary_name)) > 0),
+			secretary_email TEXT NOT NULL,
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			UNIQUE (year, sequence_no)
+		);
+
+		CREATE INDEX IF NOT EXISTS protocols_created_idx
+			ON protocols(created_at DESC, id DESC);
+
+		CREATE TABLE IF NOT EXISTS protocol_questions (
+			protocol_id BIGINT NOT NULL REFERENCES protocols(id) ON DELETE CASCADE,
+			question_id BIGINT NOT NULL REFERENCES questions(id),
+			round_id BIGINT NOT NULL REFERENCES committee_vote_rounds(id),
+			agenda_order INTEGER NOT NULL CHECK (agenda_order > 0),
+			title_snapshot TEXT NOT NULL,
+			summary_snapshot TEXT NOT NULL DEFAULT '',
+			decision_text_snapshot TEXT NOT NULL,
+			PRIMARY KEY (protocol_id, question_id),
+			UNIQUE (question_id),
+			UNIQUE (round_id),
+			UNIQUE (protocol_id, agenda_order)
+		);
+
+		CREATE INDEX IF NOT EXISTS protocol_questions_protocol_idx
+			ON protocol_questions(protocol_id, agenda_order);
 
 		CREATE TABLE IF NOT EXISTS audit_events (
 			id BIGSERIAL PRIMARY KEY,

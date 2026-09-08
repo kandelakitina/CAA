@@ -182,6 +182,35 @@ func TestCommitteeVoteRole(t *testing.T) {
 	}
 }
 
+func TestProtocolManagementRole(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for _, test := range []struct {
+		role       string
+		wantStatus int
+	}{
+		{role: "secretary", wantStatus: http.StatusNoContent},
+		{role: "committee", wantStatus: http.StatusForbidden},
+		{role: "admin", wantStatus: http.StatusForbidden},
+		{role: "approver", wantStatus: http.StatusForbidden},
+		{role: "observer", wantStatus: http.StatusForbidden},
+	} {
+		t.Run(test.role, func(t *testing.T) {
+			app := &application{}
+			router := gin.New()
+			router.POST("/protocols", func(c *gin.Context) {
+				c.Set("user", user{Role: test.role})
+			}, app.requireRole("secretary"), func(c *gin.Context) {
+				c.Status(http.StatusNoContent)
+			})
+			response := httptest.NewRecorder()
+			router.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/protocols", nil))
+			if response.Code != test.wantStatus {
+				t.Fatalf("status=%d, want %d", response.Code, test.wantStatus)
+			}
+		})
+	}
+}
+
 func TestQuestionFileUploaderRoles(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	for _, test := range []struct {

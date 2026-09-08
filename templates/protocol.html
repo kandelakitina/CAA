@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ .Title }}</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  <header class="topbar">
+    <div><p class="eyebrow">Neva Concert Hall</p><strong>Корпоративные согласования</strong></div>
+    <div class="account">
+      <a class="nav-link" href="/">Вопросы</a><a class="nav-link" href="/protocols">Протоколы</a>
+      <a class="nav-link" href="/password/change">Пароль</a>
+      <span>{{ .User.FullName }}</span><span class="role">{{ .User.Role }}</span>
+      <form method="post" action="/logout"><input type="hidden" name="_csrf" value="{{ .CSRFToken }}"><button type="submit" class="button-secondary">Выйти</button></form>
+    </div>
+  </header>
+  <main class="content protocol-page">
+    <section class="card protocol-sheet">
+      <div class="protocol-toolbar"><a class="back-link" href="/protocols">← Все протоколы</a><a class="button-link" href="/protocols/{{ .Protocol.ID }}/word">Скачать Word</a></div>
+      <p class="protocol-kicker">ПРОТОКОЛ № {{ .Protocol.Number }}</p>
+      <h1>Заочное голосование Комитета</h1>
+      <div class="protocol-meta">
+        <div><span>Дата</span><strong>{{ .Protocol.DateLabel }}</strong></div><div><span>Время</span><strong>{{ .Protocol.TimeLabel }}</strong></div>
+        <div><span>Форма</span><strong>Заочное голосование</strong></div><div><span>Место</span><strong>{{ .Protocol.Place }}</strong></div>
+        <div><span>Председатель</span><strong>{{ .Protocol.ChairName }}</strong></div><div><span>Секретарь</span><strong>{{ .Protocol.SecretaryName }}</strong></div>
+      </div>
+      <section class="protocol-agenda"><h2>Повестка дня</h2><ol>{{ range .Protocol.Questions }}<li><a href="#question-{{ .Order }}">{{ .Title }}</a></li>{{ end }}</ol></section>
+      {{ range .Protocol.Questions }}
+      <section class="protocol-question" id="question-{{ .Order }}">
+        <p class="eyebrow">Вопрос {{ .Order }}</p><h2>{{ .Title }}</h2>
+        {{ if .Summary }}<div class="protocol-text"><strong>Краткое описание материалов</strong><p>{{ .Summary }}</p></div>{{ end }}
+        <div class="protocol-text"><strong>Материалы</strong><ul>{{ range .Files }}<li>{{ .Title }} · версия {{ .VersionNo }}</li>{{ end }}</ul></div>
+        <div class="protocol-text"><strong>Формулировка решения</strong><p>{{ .DecisionText }}</p></div>
+        <div class="protocol-votes">
+          <div class="protocol-vote protocol-vote--head"><strong>Участник</strong><strong>Участие и голос</strong></div>
+          {{ range .Participants }}
+          <div class="protocol-vote"><div><strong>{{ .Name }}</strong>{{ if .IsChair }}<span>Председатель</span>{{ end }}</div><div>{{ if .Responded }}<strong>{{ .Decision }}</strong>{{ if .Comment }}<p>{{ .Comment }}</p>{{ end }}{{ if .AttachmentCount }}<small>Приложено файлов с замечаниями: {{ .AttachmentCount }}</small>{{ end }}{{ else }}<span>Не участвовал</span>{{ end }}</div></div>
+          {{ end }}
+        </div>
+        <p class="protocol-outcome"><strong>Итог:</strong> {{ .Outcome }}</p>
+      </section>
+      {{ end }}
+      <div class="protocol-signatures"><p><span>Председатель ____________________</span><strong>{{ .Protocol.ChairName }}</strong></p><p><span>Секретарь ______________________</span><strong>{{ .Protocol.SecretaryName }}</strong></p></div>
+      {{ if .Protocol.CanDelete }}<form class="protocol-delete" method="post" action="/protocols/{{ .Protocol.ID }}/delete"><input type="hidden" name="_csrf" value="{{ .CSRFToken }}"><button type="submit" class="button-danger">Удалить вспомогательный протокол</button><small>Номер не будет использован повторно, а вопросы снова станут доступны для формирования.</small></form>{{ end }}
+    </section>
+  </main>
+</body>
+</html>
