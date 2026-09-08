@@ -42,6 +42,9 @@ type questionDetail struct {
 	CreatedBy          string
 	CreatedLabel       string
 	HasTransactionData bool
+	CancellationReason string
+	CancelledLabel     string
+	CancelledBy        string
 }
 
 type questionInput struct {
@@ -61,6 +64,7 @@ func (app *application) listQuestions(c *gin.Context, usr user) ([]questionListI
 		SELECT id, title, question_type, status, internal_deadline, updated_at
 		FROM questions
 		WHERE $1 <> 'committee' OR status IN ('committee_voting', 'approved', 'rejected', 'no_quorum')
+		   OR (status = 'cancelled' AND EXISTS (SELECT 1 FROM committee_vote_rounds WHERE question_id = questions.id))
 		ORDER BY updated_at DESC, id DESC
 	`, usr.Role)
 	if err != nil {
@@ -203,19 +207,22 @@ func (app *application) showQuestion(c *gin.Context) {
 	var detail questionDetail
 	var questionType, subtype, status, amount string
 	var deadline, createdAt time.Time
+	var cancelledAt *time.Time
 	err = app.db.QueryRow(c.Request.Context(), `
 		SELECT q.id, q.title, q.question_type, COALESCE(q.transaction_subtype, ''),
 		       q.summary, q.decision_text, q.internal_deadline, q.counterparty,
 		       COALESCE(q.amount::TEXT, ''), q.currency, q.status,
-		       u.full_name, q.created_at
+		       u.full_name, q.created_at, q.cancellation_reason, q.cancelled_at, q.cancelled_by_name
 		FROM questions q
 		JOIN users u ON u.id = q.created_by
 		WHERE q.id = $1
-		  AND ($2 <> 'committee' OR q.status IN ('committee_voting', 'approved', 'rejected', 'no_quorum'))
+		  AND ($2 <> 'committee' OR q.status IN ('committee_voting', 'approved', 'rejected', 'no_quorum')
+		       OR (q.status = 'cancelled' AND EXISTS (SELECT 1 FROM committee_vote_rounds WHERE question_id = q.id)))
 	`, questionID, usr.Role).Scan(
 		&detail.ID, &detail.Title, &questionType, &subtype, &detail.Summary,
 		&detail.DecisionText, &deadline, &detail.Counterparty,
 		&amount, &detail.Currency, &status, &detail.CreatedBy, &createdAt,
+		&detail.CancellationReason, &cancelledAt, &detail.CancelledBy,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
 		c.String(http.StatusNotFound, "Вопрос не найден")
@@ -233,6 +240,9 @@ func (app *application) showQuestion(c *gin.Context) {
 	detail.AmountLabel = strings.TrimRight(strings.TrimRight(amount, "0"), ".")
 	detail.CreatedLabel = createdAt.Format("02.01.2006 15:04")
 	detail.HasTransactionData = questionType == "transaction"
+	if cancelledAt != nil {
+		detail.CancelledLabel = cancelledAt.Format("02.01.2006 15:04")
+	}
 	files, err := app.loadQuestionFiles(c.Request.Context(), questionID, usr)
 	if err != nil {
 		c.String(http.StatusInternalServerError, "Не удалось загрузить комплект файлов")
@@ -240,6 +250,13 @@ func (app *application) showQuestion(c *gin.Context) {
 	}
 	canUpload := canUploadQuestionFiles(usr)
 	canUpload = canUpload && (status == "draft" || status == "internal_review" || status == "revision_required" || status == "rejected" || status == "no_quorum")
+	if status == "cancelled" {
+		for i := range files {
+			for j := range files[i].Versions {
+				files[i].Versions[j].CanReview = false
+			}
+		}
+	}
 	internalReview, err := app.loadInternalReview(c.Request.Context(), questionID, status, usr)
 	if err != nil {
 		c.String(http.StatusInternalServerError, "Не удалось загрузить внутреннее согласование")
@@ -260,6 +277,7 @@ func (app *application) showQuestion(c *gin.Context) {
 		"Title": detail.Title, "User": usr, "CSRFToken": app.templateCSRF(c), "Question": detail,
 		"Files": files, "CanUploadFiles": canUpload, "InternalReview": internalReview,
 		"RevisionPlan": revisionPlan, "CommitteeVote": committeeVote,
+		"CanCancelQuestion": usr.Role == "secretary" && canCancelQuestion(status),
 	})
 }
 

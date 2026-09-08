@@ -206,6 +206,7 @@ func auditEventLabel(eventType string) string {
 		"user.password_changed":           "Изменён собственный пароль",
 		"user.assignment_updated":         "Обновлено назначение пользователя",
 		"question.created":                "Создан вопрос",
+		"question.cancelled":              "Отменён вопрос",
 		"question.file_version_uploaded":  "Загружена версия файла вопроса",
 		"question.file_version_confirmed": "Подтверждена версия файла вопроса",
 		"question.file_version_rejected":  "Отклонена версия файла вопроса",

@@ -2,7 +2,7 @@
 
 ## Repository
 
-- Workspace: `/home/boticelli/Documents/CorpDocsReview`.
+- Current workspace: `C:\Users\boticelli-win\Downloads\CAA\CAA`.
 - Read and follow `AGENTS.md`.
 - Communicate with the owner in Russian.
 - Do not push or deploy without explicit approval: every push to the connected
@@ -25,15 +25,31 @@
 - Existing security work includes CSRF protection, login rate limiting and
   authorization tests.
 - The application has an immutable audit journal at `/admin/audit`.
-- Uploads have content validation for PDF, DOC and DOCX formats with tests.
-- The current application still uses the older single-document approval model;
-  the target multi-file question workflow in README is not yet implemented.
+- Uploads have content validation for PDF, DOC, DOCX, XLS and XLSX with tests.
+- Questions and independently versioned multi-file bundles are implemented,
+  including secretary confirmation of uploads.
+- Four-service internal reviews, withdrawals, revision rounds and explicit
+  carry-forward of positive visas are implemented.
+- Committee voting includes frozen rosters/files/decision text, quorum,
+  attachments, withdrawals, deadline extensions and repeat rounds.
+- Numbered protocols support manual agenda order, HTML and editable Word export.
+- Question cancellation is implemented locally: secretary only, mandatory reason,
+  atomic active-round cancellation and audit, retained history. Approved and
+  already cancelled questions cannot be cancelled. Committee readers retain
+  access only if the cancelled question had reached Committee voting.
+- The legacy single-document workflow remains for compatibility.
 
 ## Recommended next session
 
-Start phase 1 of the target workflow: design and implement the data model for
-questions, mutually exclusive roles, four internal services, multi-file bundles
-and independent file versions.
+Next: implement editing question details and decision text in draft. Treat
+editing after internal review starts as a separate revision workflow requiring
+explicit rules for visa carry-forward. Then implement file exclusion without
+deleting history, with mandatory-bundle validation and stage restrictions.
+
+The cancellation change adds three columns with `ADD COLUMN IF NOT EXISTS`:
+`questions.cancellation_reason`, `cancelled_at`, `cancelled_by_name`. Existing
+rows get empty text / NULL; existing business records are not rewritten.
+No new environment variables or production dependencies are required.
 
 Before editing:
 
@@ -56,8 +72,8 @@ production as part of ordinary development.
 
 After changes, follow the commands in `AGENTS.md`: `gofmt`, `go test ./...`,
 `go vet ./...`, build to `/tmp`, `git diff --check`, and inspect the full diff.
-Go may only be available through `nix develop` in the current environment;
-preserve any pre-existing `flake.lock` changes.
+The current Windows environment has Go 1.27.0. Its module cache may require
+sandbox approval. Build to the OS temporary directory on Windows.
 
 ## Deferred topics
 

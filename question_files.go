@@ -639,7 +639,8 @@ func (app *application) downloadQuestionFileVersion(c *gin.Context) {
 		JOIN question_files f ON f.id = v.question_file_id
 		JOIN questions q ON q.id = f.question_id
 		WHERE q.id = $1 AND f.id = $2 AND v.version_no = $3
-		  AND ($4 <> 'committee' OR q.status IN ('committee_voting', 'approved', 'rejected', 'no_quorum'))
+		  AND ($4 <> 'committee' OR q.status IN ('committee_voting', 'approved', 'rejected', 'no_quorum')
+		       OR (q.status = 'cancelled' AND EXISTS (SELECT 1 FROM committee_vote_rounds WHERE question_id = q.id)))
 	`, questionID, fileID, versionNo, usr.Role).Scan(&objectKey, &versionID, &filename, &contentType, &size)
 	if errors.Is(err, pgx.ErrNoRows) {
 		c.String(http.StatusNotFound, "Версия файла не найдена")

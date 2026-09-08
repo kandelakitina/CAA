@@ -100,6 +100,7 @@ func main() {
 	router.GET("/", app.requireUser(), app.dashboard)
 	router.POST("/questions", app.requireUser(), app.requireCSRF(), app.requireRole("secretary"), app.createQuestion)
 	router.GET("/questions/:id", app.requireUser(), app.showQuestion)
+	router.POST("/questions/:id/cancel", app.requireUser(), app.requireCSRF(), app.requireRole("secretary"), app.cancelQuestion)
 	router.POST("/questions/:id/files", app.requireUser(), app.requireCSRF(), app.requireQuestionFileUploader(), app.uploadQuestionFile)
 	router.POST("/questions/:id/files/:fileID/versions", app.requireUser(), app.requireCSRF(), app.requireQuestionFileUploader(), app.uploadQuestionFileVersion)
 	router.GET("/questions/:id/files/:fileID/versions/:version/download", app.requireUser(), app.downloadQuestionFileVersion)
@@ -279,6 +280,9 @@ func (app *application) migrate(ctx context.Context) error {
 		);
 
 		CREATE INDEX IF NOT EXISTS questions_updated_at_idx ON questions(updated_at DESC, id DESC);
+		ALTER TABLE questions ADD COLUMN IF NOT EXISTS cancellation_reason TEXT NOT NULL DEFAULT '';
+		ALTER TABLE questions ADD COLUMN IF NOT EXISTS cancelled_at TIMESTAMPTZ;
+		ALTER TABLE questions ADD COLUMN IF NOT EXISTS cancelled_by_name TEXT NOT NULL DEFAULT '';
 		CREATE INDEX IF NOT EXISTS questions_status_idx ON questions(status, updated_at DESC);
 
 		CREATE TABLE IF NOT EXISTS question_files (

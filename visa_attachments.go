@@ -154,7 +154,8 @@ func (app *application) downloadInternalVisaAttachment(c *gin.Context) {
 		JOIN internal_review_rounds round ON round.id = requirement.round_id
 		JOIN questions question ON question.id = round.question_id
 		WHERE attachment.id = $1 AND question.id = $2
-		  AND ($3 <> 'committee' OR question.status IN ('committee_voting', 'approved', 'rejected', 'no_quorum'))
+		  AND ($3 <> 'committee' OR question.status IN ('committee_voting', 'approved', 'rejected', 'no_quorum')
+		       OR (question.status = 'cancelled' AND EXISTS (SELECT 1 FROM committee_vote_rounds WHERE question_id = question.id)))
 	`, attachmentID, questionID, usr.Role).Scan(&objectKey, &versionID, &filename, &contentType, &size)
 	if errors.Is(err, pgx.ErrNoRows) {
 		c.String(http.StatusNotFound, "Вложение не найдено")

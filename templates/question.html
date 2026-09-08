@@ -38,6 +38,20 @@
       {{ end }}
       <section class="question-text"><h2>Формулировка решения</h2><p>{{ .Question.DecisionText }}</p></section>
       {{ if .Question.Summary }}<section class="question-text"><h2>Краткое описание материалов</h2><p>{{ .Question.Summary }}</p></section>{{ end }}
+      {{ if .Question.CancellationReason }}
+      <section class="question-text"><h2>Вопрос отменён</h2><p>{{ .Question.CancellationReason }}</p><p>{{ .Question.CancelledBy }} · {{ .Question.CancelledLabel }}</p><p>Возобновление вопроса невозможно. Материалы и решения сохранены в истории.</p></section>
+      {{ end }}
+      {{ if .CanCancelQuestion }}
+      <details class="upload-panel">
+        <summary>Отменить вопрос</summary>
+        <p>Активное согласование или голосование будет отменено. Возобновить вопрос нельзя. Файлы и принятые решения останутся в истории.</p>
+        <form class="form-stack" method="post" action="/questions/{{ .Question.ID }}/cancel">
+          <input type="hidden" name="_csrf" value="{{ .CSRFToken }}">
+          <label>Причина отмены<textarea name="reason" maxlength="2000" required></textarea></label>
+          <button type="submit" class="button-danger">Отменить вопрос окончательно</button>
+        </form>
+      </details>
+      {{ end }}
 
 	  <section class="question-materials">
 		<div class="section-heading"><div><p class="eyebrow">Материалы</p><h2>Комплект файлов</h2></div></div>
