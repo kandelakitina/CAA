@@ -10,14 +10,7 @@
 <body>
   <header class="topbar">
     <div><p class="eyebrow">Neva Concert Hall</p><strong>Корпоративные согласования</strong></div>
-    <div class="account">
-      {{ template "workspace-nav" . }}
-	  <a class="nav-link" href="/protocols">Протоколы</a>
-      {{ if eq .User.Role "admin" }}<a class="nav-link" href="/admin/users">Пользователи</a><a class="nav-link" href="/admin/audit">Аудит</a>{{ end }}
-      <a class="nav-link" href="/password/change">Пароль</a>
-      <span>{{ .User.FullName }}</span><span class="role">{{ .User.Role }}</span>
-      <form method="post" action="/logout"><input type="hidden" name="_csrf" value="{{ .CSRFToken }}"><button type="submit" class="button-secondary">Выйти</button></form>
-    </div>
+    <div class="account">{{ template "workspace-nav" . }}</div>
   </header>
   <main class="content">
     {{ if .Archived }}<div class="alert">Вопрос в архиве. Доступны просмотр и скачивание истории.</div>{{ end }}

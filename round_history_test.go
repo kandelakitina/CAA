@@ -157,7 +157,8 @@ func TestRoundHistoryTemplateReadOnly(t *testing.T) {
 			t.Fatal(err)
 		}
 		body := output.String()
-		if strings.Contains(body, "<form") || strings.Contains(body, "<script>") {
+		_, historyBody, hasMain := strings.Cut(body, "<main")
+		if !hasMain || strings.Contains(historyBody, "<form") || strings.Contains(body, "<script>") {
 			t.Fatal("history must not contain mutation forms or unescaped comments")
 		}
 		if !strings.Contains(body, "/files/5/versions/1/download") {

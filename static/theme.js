@@ -7,8 +7,8 @@
     function render() {
       buttons.forEach(button => {
         const dark = document.documentElement.dataset.theme === "dark";
-        button.textContent = dark ? "Светлая тема" : "Тёмная тема";
-        button.setAttribute("aria-label", dark ? "Включить светлую тему" : "Включить тёмную тему");
+        button.setAttribute("aria-checked", String(dark));
+        button.title = dark ? "Включить светлую тему" : "Включить тёмную тему";
       });
     }
     buttons.forEach(button => button.addEventListener("click", () => {

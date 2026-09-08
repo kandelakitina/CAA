@@ -8,8 +8,7 @@
   <link rel="stylesheet" href="/static/app.css">
 </head>
 <body>
-  <header class="topbar"><div><p class="eyebrow">Neva Concert Hall</p><strong>История согласований</strong></div><div class="account">
-      {{ template "workspace-nav" . }}<a class="nav-link" href="/">Все вопросы</a><span>{{ .User.FullName }}</span></div></header>
+  <header class="topbar"><div><p class="eyebrow">Neva Concert Hall</p><strong>История согласований</strong></div><div class="account">{{ template "workspace-nav" . }}</div></header>
   <main class="content">
     <section class="card dashboard-card">
       <a class="back-link" href="/questions/{{ .Page.QuestionID }}">← Вернуться к текущему состоянию вопроса</a>

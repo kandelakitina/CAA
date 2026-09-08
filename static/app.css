@@ -96,6 +96,41 @@
 
 .account { flex-wrap: wrap; justify-content: flex-end; }
 .login-theme { position: absolute; top: 1rem; right: 1rem; }
+.theme-toggle {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-around;
+  flex: 0 0 76px;
+  width: 76px;
+  height: 44px;
+  padding: 4px;
+  border: 1px solid var(--color-33445f);
+  border-radius: 999px;
+  background: var(--color-24324a);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.theme-toggle:hover { background: var(--color-293951); }
+.theme-toggle:focus-visible { outline: 3px solid var(--color-5b78ff); outline-offset: 3px; }
+.theme-toggle-thumb {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: var(--color-0c1627);
+  box-shadow: 0 1px 4px var(--surface-5);
+  transition: transform 180ms ease;
+}
+.theme-toggle-icon { position: relative; width: 19px; height: 19px; pointer-events: none; }
+.theme-toggle-sun { color: var(--color-fcd34d); }
+.theme-toggle-moon { color: var(--color-8393ab); }
+:root[data-theme=dark] .theme-toggle-thumb { transform: translateX(32px); }
+:root[data-theme=dark] .theme-toggle-sun { color: var(--color-8393ab); }
+:root[data-theme=dark] .theme-toggle-moon { color: var(--color-c8d2ff); }
+@media (prefers-reduced-motion: reduce) { .theme-toggle-thumb { transition: none; } }
 .admin-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(13rem,1fr)); gap: 1rem; margin: 1.5rem 0; }
 .admin-tile { padding: 1.2rem; border: 1px solid var(--color-33445f); border-radius: 1rem; }
 .admin-tile strong { display: block; font-size: 2rem; margin: .5rem 0; }

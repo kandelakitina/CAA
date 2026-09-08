@@ -1,6 +1,25 @@
-{{ define "theme-switch" }}<button type="button" class="button-secondary theme-toggle" data-theme-toggle>Тёмная тема</button>{{ end }}
+{{ define "theme-switch" }}
+<button type="button" class="theme-toggle" data-theme-toggle role="switch" aria-checked="false" aria-label="Тёмная тема" title="Включить тёмную тему">
+  <span class="theme-toggle-thumb" aria-hidden="true"></span>
+  <svg class="theme-toggle-icon theme-toggle-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2m0 16v2M2 12h2m16 0h2M4.93 4.93l1.42 1.42m11.3 11.3 1.42 1.42M4.93 19.07l1.42-1.42m11.3-11.3 1.42-1.42"></path></svg>
+  <svg class="theme-toggle-icon theme-toggle-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M20.9 13.1A9 9 0 0 1 10.9 3.1 9 9 0 1 0 20.9 13.1Z"></path></svg>
+</button>
+{{ end }}
 {{ define "workspace-nav" }}
+<a class="nav-link" href="/registry">Вопросы</a>
+<a class="nav-link" href="/protocols">Протоколы</a>
 <a class="nav-link" href="/reports/statuses">Статусы</a>
-{{ if eq .User.Role "admin" }}<a class="nav-link" href="/admin">Панель администратора</a>{{ end }}
+{{ if eq .User.Role "admin" }}
+<a class="nav-link" href="/admin">Панель администратора</a>
+<a class="nav-link" href="/admin/users">Пользователи</a>
+<a class="nav-link" href="/admin/audit">Аудит</a>
+{{ end }}
+<a class="nav-link" href="/password/change">Пароль</a>
 {{ template "theme-switch" . }}
+<span>{{ .User.FullName }}</span>
+<span class="role">{{ .User.Role }}</span>
+<form method="post" action="/logout">
+  <input type="hidden" name="_csrf" value="{{ .CSRFToken }}">
+  <button type="submit" class="button-secondary">Выйти</button>
+</form>
 {{ end }}
