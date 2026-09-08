@@ -68,7 +68,7 @@ func (app *application) requireInternalApprover() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		usr := c.MustGet("user").(user)
 		if usr.Role != "approver" || !validInternalService(usr.InternalService) {
-			c.String(http.StatusForbidden, "Решение может дать только назначенный внутренний согласующий")
+			respondMessage(c, http.StatusForbidden, "Решение может дать только назначенный внутренний согласующий")
 			c.Abort()
 			return
 		}
@@ -152,17 +152,17 @@ func (app *application) startInternalReview(c *gin.Context) {
 	}
 	requestedDeadline, err := time.Parse("2006-01-02", strings.TrimSpace(c.PostForm("deadline")))
 	if err != nil {
-		c.String(http.StatusUnprocessableEntity, "Укажите срок внутреннего согласования")
+		respondMessage(c, http.StatusUnprocessableEntity, "Укажите срок внутреннего согласования")
 		return
 	}
 	tx, err := app.db.Begin(c.Request.Context())
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось начать внутреннее согласование")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось начать внутреннее согласование")
 		return
 	}
 	defer tx.Rollback(c.Request.Context())
 	if err := lockUserAssignments(c, tx); err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось проверить назначения пользователей")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось проверить назначения пользователей")
 		return
 	}
 
@@ -172,15 +172,15 @@ func (app *application) startInternalReview(c *gin.Context) {
 		FROM questions WHERE id = $1 FOR UPDATE
 	`, questionID).Scan(&title, &questionType, &status)
 	if errors.Is(err, pgx.ErrNoRows) {
-		c.String(http.StatusNotFound, "Вопрос не найден")
+		respondMessage(c, http.StatusNotFound, "Вопрос не найден")
 		return
 	}
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось загрузить вопрос")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось загрузить вопрос")
 		return
 	}
 	if status != "draft" {
-		c.String(http.StatusConflict, "Внутреннее согласование можно запустить только из черновика")
+		respondMessage(c, http.StatusConflict, "Внутреннее согласование можно запустить только из черновика")
 		return
 	}
 	rows, err := tx.Query(c.Request.Context(), `
@@ -190,7 +190,7 @@ func (app *application) startInternalReview(c *gin.Context) {
 		ORDER BY id FOR UPDATE
 	`, questionID)
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось проверить комплект файлов")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось проверить комплект файлов")
 		return
 	}
 	var files []reviewStartFile
@@ -198,14 +198,14 @@ func (app *application) startInternalReview(c *gin.Context) {
 		var file reviewStartFile
 		if err := rows.Scan(&file.ID, &file.VersionNo, &file.Category); err != nil {
 			rows.Close()
-			c.String(http.StatusInternalServerError, "Не удалось прочитать комплект файлов")
+			respondMessage(c, http.StatusInternalServerError, "Не удалось прочитать комплект файлов")
 			return
 		}
 		files = append(files, file)
 	}
 	if err := rows.Err(); err != nil {
 		rows.Close()
-		c.String(http.StatusInternalServerError, "Не удалось прочитать комплект файлов")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось прочитать комплект файлов")
 		return
 	}
 	rows.Close()
@@ -215,7 +215,7 @@ func (app *application) startInternalReview(c *gin.Context) {
 		JOIN question_files f ON f.id = v.question_file_id
 		WHERE f.question_id = $1 AND f.status = 'active' AND v.approval_status = 'pending'
 	`, questionID).Scan(&pendingUploads); err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось проверить ожидающие загрузки")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось проверить ожидающие загрузки")
 		return
 	}
 	serviceRows, err := tx.Query(c.Request.Context(), `
@@ -224,7 +224,7 @@ func (app *application) startInternalReview(c *gin.Context) {
 		GROUP BY internal_service
 	`)
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось проверить представителей дирекций")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось проверить представителей дирекций")
 		return
 	}
 	activeServices := make(map[string]int)
@@ -233,19 +233,19 @@ func (app *application) startInternalReview(c *gin.Context) {
 		var count int
 		if err := serviceRows.Scan(&service, &count); err != nil {
 			serviceRows.Close()
-			c.String(http.StatusInternalServerError, "Не удалось прочитать представителей дирекций")
+			respondMessage(c, http.StatusInternalServerError, "Не удалось прочитать представителей дирекций")
 			return
 		}
 		activeServices[service] = count
 	}
 	if err := serviceRows.Err(); err != nil {
 		serviceRows.Close()
-		c.String(http.StatusInternalServerError, "Не удалось прочитать представителей дирекций")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось прочитать представителей дирекций")
 		return
 	}
 	serviceRows.Close()
 	if err := validateInternalReviewStart(questionType, requestedDeadline, time.Now(), files, activeServices, pendingUploads); err != nil {
-		c.String(http.StatusUnprocessableEntity, err.Error())
+		respondMessage(c, http.StatusUnprocessableEntity, err.Error())
 		return
 	}
 	deadline := requestedDeadline
@@ -255,7 +255,7 @@ func (app *application) startInternalReview(c *gin.Context) {
 		SELECT id, $2, $3, decision_text FROM questions WHERE id = $1 RETURNING id
 	`, questionID, deadline, usr.ID).Scan(&roundID)
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось создать раунд внутреннего согласования")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось создать раунд внутреннего согласования")
 		return
 	}
 	for _, file := range files {
@@ -265,7 +265,7 @@ func (app *application) startInternalReview(c *gin.Context) {
 				VALUES ($1, $2, $3, $4)
 			`, roundID, file.ID, file.VersionNo, service)
 			if err != nil {
-				c.String(http.StatusInternalServerError, "Не удалось сформировать задания дирекциям")
+				respondMessage(c, http.StatusInternalServerError, "Не удалось сформировать задания дирекциям")
 				return
 			}
 		}
@@ -282,7 +282,7 @@ func (app *application) startInternalReview(c *gin.Context) {
 		err = tx.Commit(c.Request.Context())
 	}
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось запустить внутреннее согласование")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось запустить внутреннее согласование")
 		return
 	}
 	c.Redirect(http.StatusSeeOther, fmt.Sprintf("/questions/%d", questionID))
@@ -297,28 +297,28 @@ func (app *application) respondInternalReview(c *gin.Context) {
 	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxDocumentSize*maxVisaAttachments+(2<<20))
 	requirementID, err := strconv.ParseInt(strings.TrimSpace(c.PostForm("requirement_id")), 10, 64)
 	if err != nil || requirementID < 1 {
-		c.String(http.StatusBadRequest, "Некорректное задание на согласование")
+		respondMessage(c, http.StatusBadRequest, "Некорректное задание на согласование")
 		return
 	}
 	decision := strings.TrimSpace(c.PostForm("decision"))
 	comment := strings.TrimSpace(c.PostForm("comment"))
 	if err := validateInternalDecision(decision, comment); err != nil {
-		c.String(http.StatusUnprocessableEntity, err.Error())
+		respondMessage(c, http.StatusUnprocessableEntity, err.Error())
 		return
 	}
 	attachments, attachmentStatus, attachmentMessage := receiveVisaAttachments(c)
 	if attachmentMessage != "" {
-		c.String(attachmentStatus, attachmentMessage)
+		respondMessage(c, attachmentStatus, attachmentMessage)
 		return
 	}
 	defer closeQuestionUploads(attachments)
 	if len(attachments) > 0 && app.storage == nil {
-		c.String(http.StatusServiceUnavailable, "S3 не настроен: вложения не сохранены")
+		respondMessage(c, http.StatusServiceUnavailable, "S3 не настроен: вложения не сохранены")
 		return
 	}
 	tx, err := app.db.Begin(c.Request.Context())
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось начать сохранение визы")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось начать сохранение визы")
 		return
 	}
 	defer tx.Rollback(c.Request.Context())
@@ -334,15 +334,15 @@ func (app *application) respondInternalReview(c *gin.Context) {
 		SELECT title, status FROM questions WHERE id = $1 FOR UPDATE
 	`, questionID).Scan(&questionTitle, &questionStatus)
 	if errors.Is(err, pgx.ErrNoRows) {
-		c.String(http.StatusNotFound, "Вопрос не найден")
+		respondMessage(c, http.StatusNotFound, "Вопрос не найден")
 		return
 	}
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось загрузить вопрос")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось загрузить вопрос")
 		return
 	}
 	if questionStatus != "internal_review" {
-		c.String(http.StatusConflict, "Внутреннее согласование вопроса не активно")
+		respondMessage(c, http.StatusConflict, "Внутреннее согласование вопроса не активно")
 		return
 	}
 	var roundID, fileID int64
@@ -361,23 +361,23 @@ func (app *application) respondInternalReview(c *gin.Context) {
 		FOR UPDATE OF r, rr
 	`, requirementID, questionID).Scan(&roundID, &fileID, &versionNo, &service, &requirementStatus, &roundStatus, &fileTitle, &filePaused)
 	if errors.Is(err, pgx.ErrNoRows) {
-		c.String(http.StatusNotFound, "Задание на согласование не найдено")
+		respondMessage(c, http.StatusNotFound, "Задание на согласование не найдено")
 		return
 	}
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось загрузить задание")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось загрузить задание")
 		return
 	}
 	if roundStatus != "active" || requirementStatus != "pending" {
-		c.String(http.StatusConflict, "По этому заданию уже нельзя отправить визу")
+		respondMessage(c, http.StatusConflict, "По этому заданию уже нельзя отправить визу")
 		return
 	}
 	if filePaused {
-		c.String(http.StatusConflict, "Согласование этого файла приостановлено до решения секретаря по новой версии")
+		respondMessage(c, http.StatusConflict, "Согласование этого файла приостановлено до решения секретаря по новой версии")
 		return
 	}
 	if usr.InternalService != service {
-		c.String(http.StatusForbidden, "Это задание относится к другой дирекции")
+		respondMessage(c, http.StatusForbidden, "Это задание относится к другой дирекции")
 		return
 	}
 	var visaID int64
@@ -406,7 +406,7 @@ func (app *application) respondInternalReview(c *gin.Context) {
 	}
 	if err != nil {
 		log.Printf("save internal visa for question %d: %v", questionID, err)
-		c.String(http.StatusInternalServerError, "Не удалось сохранить визу")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось сохранить визу")
 		return
 	}
 	committed = true
@@ -514,7 +514,7 @@ func (app *application) withdrawInternalVisa(c *gin.Context) {
 	}
 	tx, err := app.db.Begin(c.Request.Context())
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось начать отзыв визы")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось начать отзыв визы")
 		return
 	}
 	defer tx.Rollback(c.Request.Context())
@@ -535,27 +535,27 @@ func (app *application) withdrawInternalVisa(c *gin.Context) {
 		FOR UPDATE OF v, r, rr
 	`, visaID, questionID).Scan(&requirementID, &decidedBy, &decidedAt, &sourceVisaID, &versionNo, &service, &roundStatus, &fileTitle)
 	if errors.Is(err, pgx.ErrNoRows) {
-		c.String(http.StatusNotFound, "Действующая виза не найдена")
+		respondMessage(c, http.StatusNotFound, "Действующая виза не найдена")
 		return
 	}
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось загрузить визу")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось загрузить визу")
 		return
 	}
 	if decidedBy != usr.ID || service != usr.InternalService {
-		c.String(http.StatusForbidden, "Отозвать визу может только отправивший её пользователь")
+		respondMessage(c, http.StatusForbidden, "Отозвать визу может только отправивший её пользователь")
 		return
 	}
 	if sourceVisaID > 0 {
-		c.String(http.StatusConflict, "Перенесённую визу нельзя отозвать как новое решение")
+		respondMessage(c, http.StatusConflict, "Перенесённую визу нельзя отозвать как новое решение")
 		return
 	}
 	if roundStatus != "active" {
-		c.String(http.StatusConflict, "Завершённый раунд изменить нельзя")
+		respondMessage(c, http.StatusConflict, "Завершённый раунд изменить нельзя")
 		return
 	}
 	if time.Now().After(decidedAt.Add(24 * time.Hour)) {
-		c.String(http.StatusConflict, "С момента отправки визы прошло более 24 часов")
+		respondMessage(c, http.StatusConflict, "С момента отправки визы прошло более 24 часов")
 		return
 	}
 	_, err = tx.Exec(c.Request.Context(), `UPDATE internal_review_visas SET withdrawn_by = $2, withdrawn_at = NOW() WHERE id = $1`, visaID, usr.ID)
@@ -573,7 +573,7 @@ func (app *application) withdrawInternalVisa(c *gin.Context) {
 		err = tx.Commit(c.Request.Context())
 	}
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось отозвать визу")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось отозвать визу")
 		return
 	}
 	c.Redirect(http.StatusSeeOther, fmt.Sprintf("/questions/%d", questionID))
@@ -588,18 +588,18 @@ func (app *application) extendInternalReview(c *gin.Context) {
 	newDeadline, err := time.Parse("2006-01-02", strings.TrimSpace(c.PostForm("deadline")))
 	reason := strings.TrimSpace(c.PostForm("reason"))
 	if err != nil || reason == "" || len([]rune(reason)) > 2000 {
-		c.String(http.StatusUnprocessableEntity, "Укажите новый срок и причину длиной до 2 000 знаков")
+		respondMessage(c, http.StatusUnprocessableEntity, "Укажите новый срок и причину длиной до 2 000 знаков")
 		return
 	}
 	now := time.Now()
 	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
 	if newDeadline.Before(today) {
-		c.String(http.StatusUnprocessableEntity, "Новый срок не может быть в прошлом")
+		respondMessage(c, http.StatusUnprocessableEntity, "Новый срок не может быть в прошлом")
 		return
 	}
 	tx, err := app.db.Begin(c.Request.Context())
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось начать продление срока")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось начать продление срока")
 		return
 	}
 	defer tx.Rollback(c.Request.Context())
@@ -612,15 +612,15 @@ func (app *application) extendInternalReview(c *gin.Context) {
 		WHERE rr.question_id = $1 AND rr.status = 'active' FOR UPDATE OF rr, q
 	`, questionID).Scan(&roundID, &oldDeadline, &title)
 	if errors.Is(err, pgx.ErrNoRows) {
-		c.String(http.StatusConflict, "Активное внутреннее согласование не найдено")
+		respondMessage(c, http.StatusConflict, "Активное внутреннее согласование не найдено")
 		return
 	}
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось загрузить срок согласования")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось загрузить срок согласования")
 		return
 	}
 	if !newDeadline.After(oldDeadline) {
-		c.String(http.StatusUnprocessableEntity, "Новый срок должен быть позже текущего")
+		respondMessage(c, http.StatusUnprocessableEntity, "Новый срок должен быть позже текущего")
 		return
 	}
 	_, err = tx.Exec(c.Request.Context(), `UPDATE internal_review_rounds SET deadline = $2 WHERE id = $1`, roundID, newDeadline)
@@ -638,7 +638,7 @@ func (app *application) extendInternalReview(c *gin.Context) {
 		err = tx.Commit(c.Request.Context())
 	}
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось продлить срок")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось продлить срок")
 		return
 	}
 	c.Redirect(http.StatusSeeOther, fmt.Sprintf("/questions/%d", questionID))
@@ -652,7 +652,7 @@ func (app *application) cancelInternalReview(c *gin.Context) {
 	}
 	tx, err := app.db.Begin(c.Request.Context())
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось начать отмену согласования")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось начать отмену согласования")
 		return
 	}
 	defer tx.Rollback(c.Request.Context())
@@ -664,11 +664,11 @@ func (app *application) cancelInternalReview(c *gin.Context) {
 		WHERE rr.question_id = $1 AND rr.status = 'active' FOR UPDATE OF rr, q
 	`, questionID).Scan(&roundID, &title)
 	if errors.Is(err, pgx.ErrNoRows) {
-		c.String(http.StatusConflict, "Активное внутреннее согласование не найдено")
+		respondMessage(c, http.StatusConflict, "Активное внутреннее согласование не найдено")
 		return
 	}
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось загрузить согласование")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось загрузить согласование")
 		return
 	}
 	_, err = tx.Exec(c.Request.Context(), `UPDATE internal_review_rounds SET status = 'cancelled', cancelled_at = NOW() WHERE id = $1`, roundID)
@@ -685,7 +685,7 @@ func (app *application) cancelInternalReview(c *gin.Context) {
 		err = tx.Commit(c.Request.Context())
 	}
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось отменить согласование")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось отменить согласование")
 		return
 	}
 	c.Redirect(http.StatusSeeOther, fmt.Sprintf("/questions/%d", questionID))
@@ -694,7 +694,7 @@ func (app *application) cancelInternalReview(c *gin.Context) {
 func parsePositiveID(c *gin.Context, parameter, message string) (int64, bool) {
 	value, err := strconv.ParseInt(c.Param(parameter), 10, 64)
 	if err != nil || value < 1 {
-		c.String(http.StatusBadRequest, message)
+		respondMessage(c, http.StatusBadRequest, message)
 		return 0, false
 	}
 	return value, true

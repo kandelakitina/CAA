@@ -72,12 +72,12 @@ func (app *application) renderDashboardWithQuestion(c *gin.Context, status int, 
 	usr := c.MustGet("user").(user)
 	documents, err := app.listDocuments(c.Request.Context())
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось загрузить реестр документов")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось загрузить реестр документов")
 		return
 	}
 	questions, err := app.listQuestions(c, usr)
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось загрузить реестр вопросов")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось загрузить реестр вопросов")
 		return
 	}
 
@@ -407,16 +407,16 @@ func (app *application) renderDocument(c *gin.Context, status int, documentID in
 	usr := c.MustGet("user").(user)
 	detail, versions, err := app.loadDocument(c.Request.Context(), documentID)
 	if errors.Is(err, pgx.ErrNoRows) {
-		c.String(http.StatusNotFound, "Документ не найден")
+		respondMessage(c, http.StatusNotFound, "Документ не найден")
 		return
 	}
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось загрузить документ")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось загрузить документ")
 		return
 	}
 	approval, err := app.loadApprovalView(c.Request.Context(), documentID, detail.CurrentVersion, detail.Status, usr)
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось загрузить согласование")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось загрузить согласование")
 		return
 	}
 	c.HTML(status, "document.html", gin.H{
@@ -434,7 +434,7 @@ func (app *application) renderDocument(c *gin.Context, status int, documentID in
 func (app *application) showDocument(c *gin.Context) {
 	documentID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil || documentID < 1 {
-		c.String(http.StatusBadRequest, "Некорректный идентификатор документа")
+		respondMessage(c, http.StatusBadRequest, "Некорректный идентификатор документа")
 		return
 	}
 	app.renderDocument(c, http.StatusOK, documentID, "")
@@ -443,23 +443,23 @@ func (app *application) showDocument(c *gin.Context) {
 func (app *application) createDocumentVersion(c *gin.Context) {
 	usr := c.MustGet("user").(user)
 	if usr.Role != "admin" && usr.Role != "secretary" {
-		c.String(http.StatusForbidden, "Недостаточно прав для загрузки редакций")
+		respondMessage(c, http.StatusForbidden, "Недостаточно прав для загрузки редакций")
 		return
 	}
 	if app.storage == nil {
-		c.String(http.StatusServiceUnavailable, "S3 не настроен")
+		respondMessage(c, http.StatusServiceUnavailable, "S3 не настроен")
 		return
 	}
 	documentID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil || documentID < 1 {
-		c.String(http.StatusBadRequest, "Некорректный идентификатор документа")
+		respondMessage(c, http.StatusBadRequest, "Некорректный идентификатор документа")
 		return
 	}
 	var activeApprovals int
 	if err := app.db.QueryRow(c.Request.Context(), `
 		SELECT COUNT(*) FROM approval_rounds WHERE document_id = $1 AND status = 'active'
 	`, documentID).Scan(&activeApprovals); err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось проверить статус согласования")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось проверить статус согласования")
 		return
 	}
 	if activeApprovals > 0 {
@@ -479,7 +479,7 @@ func (app *application) createDocumentVersion(c *gin.Context) {
 	defer cancel()
 	tx, err := app.db.Begin(ctx)
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось начать сохранение редакции")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось начать сохранение редакции")
 		return
 	}
 	defer tx.Rollback(ctx)
@@ -490,28 +490,28 @@ func (app *application) createDocumentVersion(c *gin.Context) {
 		SELECT current_version, title FROM documents WHERE id = $1 FOR UPDATE
 	`, documentID).Scan(&currentVersion, &documentTitle)
 	if errors.Is(err, pgx.ErrNoRows) {
-		c.String(http.StatusNotFound, "Документ не найден")
+		respondMessage(c, http.StatusNotFound, "Документ не найден")
 		return
 	}
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось определить текущую версию")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось определить текущую версию")
 		return
 	}
 	var approvalStarted bool
 	if err := tx.QueryRow(ctx, `
 		SELECT EXISTS (SELECT 1 FROM approval_rounds WHERE document_id = $1 AND status = 'active')
 	`, documentID).Scan(&approvalStarted); err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось повторно проверить согласование")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось повторно проверить согласование")
 		return
 	}
 	if approvalStarted {
-		c.String(http.StatusConflict, "Согласование уже запущено; новая версия не загружена")
+		respondMessage(c, http.StatusConflict, "Согласование уже запущено; новая версия не загружена")
 		return
 	}
 	nextVersion := currentVersion + 1
 	randomPart, err := randomToken(12)
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось сформировать ключ файла")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось сформировать ключ файла")
 		return
 	}
 	objectKey := fmt.Sprintf("documents/%d/versions/%d/%s%s", documentID, nextVersion, randomPart, upload.extension)
@@ -528,7 +528,7 @@ func (app *application) createDocumentVersion(c *gin.Context) {
 	})
 	if err != nil {
 		log.Printf("upload document %d version %d to S3: %v", documentID, nextVersion, err)
-		c.String(http.StatusBadGateway, "S3 отклонил загрузку редакции")
+		respondMessage(c, http.StatusBadGateway, "S3 отклонил загрузку редакции")
 		return
 	}
 	var s3VersionID any
@@ -559,7 +559,7 @@ func (app *application) createDocumentVersion(c *gin.Context) {
 	}
 	if err != nil {
 		log.Printf("save document %d version %d metadata: %v", documentID, nextVersion, err)
-		c.String(http.StatusInternalServerError, "Файл загружен, но сведения о редакции не сохранились")
+		respondMessage(c, http.StatusInternalServerError, "Файл загружен, но сведения о редакции не сохранились")
 		return
 	}
 
@@ -569,7 +569,7 @@ func (app *application) createDocumentVersion(c *gin.Context) {
 func (app *application) createDocument(c *gin.Context) {
 	usr := c.MustGet("user").(user)
 	if usr.Role != "admin" && usr.Role != "secretary" {
-		c.String(http.StatusForbidden, "Недостаточно прав для загрузки документов")
+		respondMessage(c, http.StatusForbidden, "Недостаточно прав для загрузки документов")
 		return
 	}
 	if app.storage == nil {
@@ -673,7 +673,7 @@ func (app *application) createDocument(c *gin.Context) {
 func (app *application) downloadCurrentDocument(c *gin.Context) {
 	documentID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil || documentID < 1 {
-		c.String(http.StatusBadRequest, "Некорректный идентификатор документа")
+		respondMessage(c, http.StatusBadRequest, "Некорректный идентификатор документа")
 		return
 	}
 	var version int
@@ -681,11 +681,11 @@ func (app *application) downloadCurrentDocument(c *gin.Context) {
 		SELECT current_version FROM documents WHERE id = $1
 	`, documentID).Scan(&version)
 	if errors.Is(err, pgx.ErrNoRows) {
-		c.String(http.StatusNotFound, "Документ не найден")
+		respondMessage(c, http.StatusNotFound, "Документ не найден")
 		return
 	}
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось определить текущую версию")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось определить текущую версию")
 		return
 	}
 	app.streamDocumentVersion(c, documentID, version)
@@ -694,12 +694,12 @@ func (app *application) downloadCurrentDocument(c *gin.Context) {
 func (app *application) downloadDocumentVersion(c *gin.Context) {
 	documentID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil || documentID < 1 {
-		c.String(http.StatusBadRequest, "Некорректный идентификатор документа")
+		respondMessage(c, http.StatusBadRequest, "Некорректный идентификатор документа")
 		return
 	}
 	version, err := strconv.Atoi(c.Param("version"))
 	if err != nil || version < 1 {
-		c.String(http.StatusBadRequest, "Некорректный номер версии")
+		respondMessage(c, http.StatusBadRequest, "Некорректный номер версии")
 		return
 	}
 	app.streamDocumentVersion(c, documentID, version)
@@ -707,7 +707,7 @@ func (app *application) downloadDocumentVersion(c *gin.Context) {
 
 func (app *application) streamDocumentVersion(c *gin.Context, documentID int64, version int) {
 	if app.storage == nil {
-		c.String(http.StatusServiceUnavailable, "S3 не настроен")
+		respondMessage(c, http.StatusServiceUnavailable, "S3 не настроен")
 		return
 	}
 
@@ -719,11 +719,11 @@ func (app *application) streamDocumentVersion(c *gin.Context, documentID int64, 
 		WHERE document_id = $1 AND version_no = $2
 	`, documentID, version).Scan(&objectKey, &versionID, &filename, &contentType, &size)
 	if errors.Is(err, pgx.ErrNoRows) {
-		c.String(http.StatusNotFound, "Версия документа не найдена")
+		respondMessage(c, http.StatusNotFound, "Версия документа не найдена")
 		return
 	}
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось найти файл документа")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось найти файл документа")
 		return
 	}
 
@@ -736,7 +736,7 @@ func (app *application) streamDocumentVersion(c *gin.Context, documentID int64, 
 	object, err := app.storage.client.GetObject(ctx, input)
 	if err != nil {
 		log.Printf("download document %d from S3: %v", documentID, err)
-		c.String(http.StatusBadGateway, "Не удалось скачать файл из S3")
+		respondMessage(c, http.StatusBadGateway, "Не удалось скачать файл из S3")
 		return
 	}
 	defer object.Body.Close()

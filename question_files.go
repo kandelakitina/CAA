@@ -268,7 +268,7 @@ func canUploadQuestionFiles(usr user) bool {
 func (app *application) requireQuestionFileUploader() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if !canUploadQuestionFiles(c.MustGet("user").(user)) {
-			c.String(http.StatusForbidden, "Загружать материалы могут секретарь и назначенные внутренние согласующие")
+			respondMessage(c, http.StatusForbidden, "Загружать материалы могут секретарь и назначенные внутренние согласующие")
 			c.Abort()
 			return
 		}
@@ -283,7 +283,7 @@ func (app *application) uploadQuestionFile(c *gin.Context) {
 func (app *application) uploadQuestionFileVersion(c *gin.Context) {
 	fileID, err := strconv.ParseInt(c.Param("fileID"), 10, 64)
 	if err != nil || fileID < 1 {
-		c.String(http.StatusBadRequest, "Некорректный идентификатор файла")
+		respondMessage(c, http.StatusBadRequest, "Некорректный идентификатор файла")
 		return
 	}
 	app.saveQuestionFileVersion(c, fileID)
@@ -292,32 +292,32 @@ func (app *application) uploadQuestionFileVersion(c *gin.Context) {
 func (app *application) saveQuestionFileVersion(c *gin.Context, fileID int64) {
 	usr := c.MustGet("user").(user)
 	if !canUploadQuestionFiles(usr) {
-		c.String(http.StatusForbidden, "Загружать материалы могут секретарь и назначенные внутренние согласующие")
+		respondMessage(c, http.StatusForbidden, "Загружать материалы могут секретарь и назначенные внутренние согласующие")
 		return
 	}
 	if app.storage == nil {
-		c.String(http.StatusServiceUnavailable, "S3 не настроен")
+		respondMessage(c, http.StatusServiceUnavailable, "S3 не настроен")
 		return
 	}
 	questionID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil || questionID < 1 {
-		c.String(http.StatusBadRequest, "Некорректный идентификатор вопроса")
+		respondMessage(c, http.StatusBadRequest, "Некорректный идентификатор вопроса")
 		return
 	}
 	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxDocumentSize+(2<<20))
 	title := strings.TrimSpace(c.PostForm("title"))
 	category := strings.TrimSpace(c.PostForm("category"))
 	if fileID == 0 && (title == "" || len([]rune(title)) > 250) {
-		c.String(http.StatusUnprocessableEntity, "Укажите название материала длиной до 250 знаков")
+		respondMessage(c, http.StatusUnprocessableEntity, "Укажите название материала длиной до 250 знаков")
 		return
 	}
 	if fileID == 0 && !validQuestionFileCategory(category) {
-		c.String(http.StatusUnprocessableEntity, "Выберите категорию материала")
+		respondMessage(c, http.StatusUnprocessableEntity, "Выберите категорию материала")
 		return
 	}
 	upload, status, message := receiveQuestionFileUpload(c)
 	if message != "" {
-		c.String(status, message)
+		respondMessage(c, status, message)
 		return
 	}
 	defer upload.file.Close()
@@ -326,7 +326,7 @@ func (app *application) saveQuestionFileVersion(c *gin.Context, fileID int64) {
 	defer cancel()
 	tx, err := app.db.Begin(ctx)
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось начать сохранение файла")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось начать сохранение файла")
 		return
 	}
 	defer tx.Rollback(ctx)
@@ -334,16 +334,16 @@ func (app *application) saveQuestionFileVersion(c *gin.Context, fileID int64) {
 	var questionStatus string
 	err = tx.QueryRow(ctx, `SELECT status FROM questions WHERE id = $1 FOR UPDATE`, questionID).Scan(&questionStatus)
 	if errors.Is(err, pgx.ErrNoRows) {
-		c.String(http.StatusNotFound, "Вопрос не найден")
+		respondMessage(c, http.StatusNotFound, "Вопрос не найден")
 		return
 	}
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось загрузить вопрос")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось загрузить вопрос")
 		return
 	}
 	newQuestionStatus, allowed := questionStatusAfterFileUpload(questionStatus)
 	if !allowed {
-		c.String(http.StatusConflict, "На текущем этапе комплект вопроса изменять нельзя")
+		respondMessage(c, http.StatusConflict, "На текущем этапе комплект вопроса изменять нельзя")
 		return
 	}
 	if fileID == 0 {
@@ -352,18 +352,18 @@ func (app *application) saveQuestionFileVersion(c *gin.Context, fileID int64) {
 			VALUES ($1, $2, $3, $4) RETURNING id
 		`, questionID, title, category, usr.ID).Scan(&fileID)
 		if err != nil {
-			c.String(http.StatusInternalServerError, "Не удалось создать карточку файла")
+			respondMessage(c, http.StatusInternalServerError, "Не удалось создать карточку файла")
 			return
 		}
 	} else {
 		var fileQuestionID int64
 		err = tx.QueryRow(ctx, `SELECT question_id, title FROM question_files WHERE id = $1 AND status = 'active' FOR UPDATE`, fileID).Scan(&fileQuestionID, &title)
 		if errors.Is(err, pgx.ErrNoRows) || fileQuestionID != questionID {
-			c.String(http.StatusNotFound, "Файл вопроса не найден")
+			respondMessage(c, http.StatusNotFound, "Файл вопроса не найден")
 			return
 		}
 		if err != nil {
-			c.String(http.StatusInternalServerError, "Не удалось загрузить карточку файла")
+			respondMessage(c, http.StatusInternalServerError, "Не удалось загрузить карточку файла")
 			return
 		}
 	}
@@ -373,23 +373,23 @@ func (app *application) saveQuestionFileVersion(c *gin.Context, fileID int64) {
 		FROM question_file_versions WHERE question_file_id = $1
 	`, fileID).Scan(&nextVersion)
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось определить номер версии")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось определить номер версии")
 		return
 	}
 	var hasPending bool
 	if err := tx.QueryRow(ctx, `SELECT EXISTS (
 		SELECT 1 FROM question_file_versions WHERE question_file_id = $1 AND approval_status = 'pending'
 	)`, fileID).Scan(&hasPending); err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось проверить ожидающие версии")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось проверить ожидающие версии")
 		return
 	}
 	if hasPending {
-		c.String(http.StatusConflict, "Сначала подтвердите или отклоните ожидающую версию")
+		respondMessage(c, http.StatusConflict, "Сначала подтвердите или отклоните ожидающую версию")
 		return
 	}
 	randomPart, err := randomToken(12)
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось сформировать ключ файла")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось сформировать ключ файла")
 		return
 	}
 	objectKey := fmt.Sprintf("questions/%d/files/%d/versions/%d/%s%s", questionID, fileID, nextVersion, randomPart, upload.extension)
@@ -400,7 +400,7 @@ func (app *application) saveQuestionFileVersion(c *gin.Context, fileID int64) {
 	})
 	if err != nil {
 		log.Printf("upload question %d file %d version %d to S3: %v", questionID, fileID, nextVersion, err)
-		c.String(http.StatusBadGateway, "S3 отклонил загрузку файла")
+		respondMessage(c, http.StatusBadGateway, "S3 отклонил загрузку файла")
 		return
 	}
 	versionID := ""
@@ -452,7 +452,7 @@ func (app *application) saveQuestionFileVersion(c *gin.Context, fileID int64) {
 	}
 	if err != nil {
 		log.Printf("save question %d file %d version %d metadata: %v", questionID, fileID, nextVersion, err)
-		c.String(http.StatusInternalServerError, "Не удалось сохранить сведения о версии")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось сохранить сведения о версии")
 		return
 	}
 	committed = true
@@ -487,12 +487,12 @@ func (app *application) reviewQuestionFileVersion(c *gin.Context, confirm bool) 
 	}
 	reason := strings.TrimSpace(c.PostForm("reason"))
 	if !confirm && (reason == "" || len([]rune(reason)) > 2000) {
-		c.String(http.StatusUnprocessableEntity, "Укажите причину отклонения длиной до 2 000 знаков")
+		respondMessage(c, http.StatusUnprocessableEntity, "Укажите причину отклонения длиной до 2 000 знаков")
 		return
 	}
 	tx, err := app.db.Begin(c.Request.Context())
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось начать проверку версии")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось начать проверку версии")
 		return
 	}
 	defer tx.Rollback(c.Request.Context())
@@ -506,19 +506,19 @@ func (app *application) reviewQuestionFileVersion(c *gin.Context, confirm bool) 
 		FOR UPDATE OF v, f, q
 	`, questionID, fileID, versionNo).Scan(&title, &approvalStatus, &questionStatus)
 	if errors.Is(err, pgx.ErrNoRows) {
-		c.String(http.StatusNotFound, "Версия файла не найдена")
+		respondMessage(c, http.StatusNotFound, "Версия файла не найдена")
 		return
 	}
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось загрузить версию файла")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось загрузить версию файла")
 		return
 	}
 	if approvalStatus != "pending" {
-		c.String(http.StatusConflict, "Решение по этой версии уже принято")
+		respondMessage(c, http.StatusConflict, "Решение по этой версии уже принято")
 		return
 	}
 	if questionStatus == "committee_voting" || questionStatus == "approved" || questionStatus == "rejected" || questionStatus == "no_quorum" || questionStatus == "cancelled" {
-		c.String(http.StatusConflict, "На текущем этапе комплект вопроса изменять нельзя")
+		respondMessage(c, http.StatusConflict, "На текущем этапе комплект вопроса изменять нельзя")
 		return
 	}
 	newStatus := "confirmed"
@@ -558,7 +558,7 @@ func (app *application) reviewQuestionFileVersion(c *gin.Context, confirm bool) 
 		err = tx.Commit(c.Request.Context())
 	}
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось сохранить решение по версии")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось сохранить решение по версии")
 		return
 	}
 	c.Redirect(http.StatusSeeOther, fmt.Sprintf("/questions/%d", questionID))
@@ -569,7 +569,7 @@ func parseQuestionFileVersionParams(c *gin.Context) (int64, int64, int, bool) {
 	fileID, errFile := strconv.ParseInt(c.Param("fileID"), 10, 64)
 	versionNo, errVersion := strconv.Atoi(c.Param("version"))
 	if errQuestion != nil || questionID < 1 || errFile != nil || fileID < 1 || errVersion != nil || versionNo < 1 {
-		c.String(http.StatusBadRequest, "Некорректный идентификатор версии файла")
+		respondMessage(c, http.StatusBadRequest, "Некорректный идентификатор версии файла")
 		return 0, 0, 0, false
 	}
 	return questionID, fileID, versionNo, true
@@ -649,7 +649,7 @@ func (app *application) downloadQuestionFileVersion(c *gin.Context) {
 		return
 	}
 	if app.storage == nil {
-		c.String(http.StatusServiceUnavailable, "S3 не настроен")
+		respondMessage(c, http.StatusServiceUnavailable, "S3 не настроен")
 		return
 	}
 	var objectKey, versionID, filename, contentType string
@@ -664,11 +664,11 @@ func (app *application) downloadQuestionFileVersion(c *gin.Context) {
 		       OR (q.status = 'cancelled' AND EXISTS (SELECT 1 FROM committee_vote_rounds WHERE question_id = q.id)))
 	`, questionID, fileID, versionNo, usr.Role).Scan(&objectKey, &versionID, &filename, &contentType, &size)
 	if errors.Is(err, pgx.ErrNoRows) {
-		c.String(http.StatusNotFound, "Версия файла не найдена")
+		respondMessage(c, http.StatusNotFound, "Версия файла не найдена")
 		return
 	}
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось найти файл")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось найти файл")
 		return
 	}
 	input := &s3.GetObjectInput{Bucket: &app.storage.bucket, Key: &objectKey}
@@ -680,7 +680,7 @@ func (app *application) downloadQuestionFileVersion(c *gin.Context) {
 	object, err := app.storage.client.GetObject(ctx, input)
 	if err != nil {
 		log.Printf("download question %d file %d version %d from S3: %v", questionID, fileID, versionNo, err)
-		c.String(http.StatusBadGateway, "Не удалось скачать файл из S3")
+		respondMessage(c, http.StatusBadGateway, "Не удалось скачать файл из S3")
 		return
 	}
 	defer object.Body.Close()

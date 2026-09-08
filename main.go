@@ -98,6 +98,7 @@ func main() {
 func (app *application) routes() *gin.Engine {
 	router := gin.Default()
 	router.LoadHTMLGlob("templates/*")
+	router.Use(func(c *gin.Context) { c.Set("application", app); c.Next() })
 	router.Static("/static", "./static")
 
 	router.GET("/health", app.health)
@@ -723,7 +724,7 @@ func (app *application) showLogin(c *gin.Context) {
 	}
 	token, err := app.issueLoginCSRF(c)
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось подготовить форму входа")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось подготовить форму входа")
 		return
 	}
 	c.HTML(http.StatusOK, "login.html", gin.H{"CSRFToken": token})
@@ -763,13 +764,13 @@ func (app *application) login(c *gin.Context) {
 
 	token, err := randomToken(32)
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось создать сессию")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось создать сессию")
 		return
 	}
 	expiresAt := time.Now().Add(sessionLifetime)
 	tx, err := app.db.Begin(c.Request.Context())
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось начать создание сессии")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось начать создание сессии")
 		return
 	}
 	defer tx.Rollback(c.Request.Context())
@@ -778,18 +779,18 @@ func (app *application) login(c *gin.Context) {
 		VALUES ($1, $2, $3)
 	`, app.sessionDigest(token), usr.ID, expiresAt)
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось сохранить сессию")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось сохранить сессию")
 		return
 	}
 	if err := app.writeAudit(c.Request.Context(), tx, usr, auditRecord{
 		EventType: "session.login", TargetType: "user", TargetID: &usr.ID,
 		TargetLabel: usr.FullName + " · " + usr.Email,
 	}); err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось записать событие аудита")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось записать событие аудита")
 		return
 	}
 	if err := tx.Commit(c.Request.Context()); err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось сохранить сессию")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось сохранить сессию")
 		return
 	}
 
@@ -805,13 +806,13 @@ func (app *application) logout(c *gin.Context) {
 	usr := c.MustGet("user").(user)
 	tx, err := app.db.Begin(c.Request.Context())
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось завершить сессию")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось завершить сессию")
 		return
 	}
 	defer tx.Rollback(c.Request.Context())
 	if token, err := c.Cookie("session_token"); err == nil {
 		if _, err := tx.Exec(c.Request.Context(), "DELETE FROM sessions WHERE token_hash = $1", app.sessionDigest(token)); err != nil {
-			c.String(http.StatusInternalServerError, "Не удалось завершить сессию")
+			respondMessage(c, http.StatusInternalServerError, "Не удалось завершить сессию")
 			return
 		}
 	}
@@ -819,11 +820,11 @@ func (app *application) logout(c *gin.Context) {
 		EventType: "session.logout", TargetType: "user", TargetID: &usr.ID,
 		TargetLabel: usr.FullName + " · " + usr.Email,
 	}); err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось записать событие аудита")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось записать событие аудита")
 		return
 	}
 	if err := tx.Commit(c.Request.Context()); err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось завершить сессию")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось завершить сессию")
 		return
 	}
 	app.setSessionCookie(c, "", -1)
@@ -857,13 +858,13 @@ func (app *application) requireUser() gin.HandlerFunc {
 				var archived bool
 				err := app.db.QueryRow(c.Request.Context(), "SELECT archived_at IS NOT NULL FROM "+table+" WHERE id=$1", id).Scan(&archived)
 				if err != nil && !errors.Is(err, pgx.ErrNoRows) {
-					c.String(500, "Не удалось проверить архив")
+					respondMessage(c, 500, "Не удалось проверить архив")
 					c.Abort()
 					return
 				}
 				c.Set("archived", archived)
 				if archived && c.Request.Method != http.MethodGet {
-					c.String(409, "Архивный материал доступен только для просмотра")
+					respondMessage(c, 409, "Архивный материал доступен только для просмотра")
 					c.Abort()
 					return
 				}

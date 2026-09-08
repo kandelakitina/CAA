@@ -161,7 +161,7 @@ func (app *application) createQuestion(c *gin.Context) {
 
 	tx, err := app.db.Begin(c.Request.Context())
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось начать создание вопроса")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось начать создание вопроса")
 		return
 	}
 	defer tx.Rollback(c.Request.Context())
@@ -179,18 +179,18 @@ func (app *application) createQuestion(c *gin.Context) {
 	`, input.QuestionType, input.TransactionType, input.Title, input.Summary,
 		input.DecisionText, deadline, input.Counterparty, input.Amount, input.Currency, usr.ID).Scan(&questionID)
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось создать вопрос")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось создать вопрос")
 		return
 	}
 	if err := app.writeAudit(c.Request.Context(), tx, usr, auditRecord{
 		EventType: "question.created", TargetType: "question", TargetID: &questionID,
 		TargetLabel: input.Title, QuestionID: &questionID, Details: questionTypeLabel(input.QuestionType),
 	}); err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось записать событие аудита")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось записать событие аудита")
 		return
 	}
 	if err := tx.Commit(c.Request.Context()); err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось сохранить вопрос")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось сохранить вопрос")
 		return
 	}
 	c.Redirect(http.StatusSeeOther, "/questions/"+strconv.FormatInt(questionID, 10))
@@ -200,7 +200,7 @@ func (app *application) showQuestion(c *gin.Context) {
 	usr := c.MustGet("user").(user)
 	questionID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil || questionID < 1 {
-		c.String(http.StatusBadRequest, "Некорректный идентификатор вопроса")
+		respondMessage(c, http.StatusBadRequest, "Некорректный идентификатор вопроса")
 		return
 	}
 
@@ -230,11 +230,11 @@ func (app *application) showQuestion(c *gin.Context) {
 		&hasReviewHistory,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
-		c.String(http.StatusNotFound, "Вопрос не найден")
+		respondMessage(c, http.StatusNotFound, "Вопрос не найден")
 		return
 	}
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось загрузить вопрос")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось загрузить вопрос")
 		return
 	}
 	detail.DeadlineLabel = deadline.Format("02.01.2006")
@@ -250,7 +250,7 @@ func (app *application) showQuestion(c *gin.Context) {
 	}
 	files, err := app.loadQuestionFiles(c.Request.Context(), questionID, usr)
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось загрузить комплект файлов")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось загрузить комплект файлов")
 		return
 	}
 	_, uploadAllowed := questionStatusAfterFileUpload(status)
@@ -267,27 +267,27 @@ func (app *application) showQuestion(c *gin.Context) {
 	}
 	internalReview, err := app.loadInternalReview(c.Request.Context(), questionID, status, usr)
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось загрузить внутреннее согласование")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось загрузить внутреннее согласование")
 		return
 	}
 	revisionPlan, err := app.loadRevisionPlan(c.Request.Context(), questionID, status, usr)
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось подготовить повторное согласование")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось подготовить повторное согласование")
 		return
 	}
 	committeeVote, err := app.loadCommitteeVote(c.Request.Context(), questionID, status, usr)
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось загрузить голосование Комитета")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось загрузить голосование Комитета")
 		return
 	}
 	decisionRevisions, err := app.loadDecisionRevisions(c.Request.Context(), questionID)
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось загрузить историю формулировки решения")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось загрузить историю формулировки решения")
 		return
 	}
 	rounds, err := loadRoundHistory(c.Request.Context(), app.db, questionID)
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось загрузить список раундов")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось загрузить список раундов")
 		return
 	}
 

@@ -37,7 +37,7 @@ func (app *application) requireRole(allowed ...string) gin.HandlerFunc {
 				return
 			}
 		}
-		c.String(http.StatusForbidden, "Недостаточно прав")
+		respondMessage(c, http.StatusForbidden, "Недостаточно прав")
 		c.Abort()
 	}
 }
@@ -80,7 +80,7 @@ func (app *application) listUsers(c *gin.Context) ([]userListItem, error) {
 func (app *application) renderUsers(c *gin.Context, status int, message string, values gin.H) {
 	users, err := app.listUsers(c)
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось загрузить пользователей")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось загрузить пользователей")
 		return
 	}
 	if values == nil {
@@ -159,17 +159,17 @@ func (app *application) createUser(c *gin.Context) {
 	}
 	passwordHash, err := hashPassword(password)
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось обработать пароль")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось обработать пароль")
 		return
 	}
 	tx, err := app.db.Begin(c.Request.Context())
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось начать создание пользователя")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось начать создание пользователя")
 		return
 	}
 	defer tx.Rollback(c.Request.Context())
 	if err := lockUserAssignments(c, tx); err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось проверить назначения пользователей")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось проверить назначения пользователей")
 		return
 	}
 	if err := ensureUniqueActiveAssignment(c, tx, role, isCommitteeChair, 0); err != nil {
@@ -191,7 +191,7 @@ func (app *application) createUser(c *gin.Context) {
 			app.renderUsers(c, http.StatusConflict, "Пользователь с таким адресом уже существует", values)
 			return
 		}
-		c.String(http.StatusInternalServerError, "Не удалось создать пользователя")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось создать пользователя")
 		return
 	}
 	if err := app.writeAudit(c.Request.Context(), tx, c.MustGet("user").(user), auditRecord{
@@ -199,11 +199,11 @@ func (app *application) createUser(c *gin.Context) {
 		TargetLabel: fullName + " · " + email,
 		Details:     assignmentDetails(role, internalService, isCommitteeChair),
 	}); err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось записать событие аудита")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось записать событие аудита")
 		return
 	}
 	if err := tx.Commit(c.Request.Context()); err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось создать пользователя")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось создать пользователя")
 		return
 	}
 	c.Redirect(http.StatusSeeOther, "/admin/users")
@@ -212,7 +212,7 @@ func (app *application) createUser(c *gin.Context) {
 func (app *application) updateUserAssignment(c *gin.Context) {
 	userID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil || userID < 1 {
-		c.String(http.StatusBadRequest, "Некорректный идентификатор пользователя")
+		respondMessage(c, http.StatusBadRequest, "Некорректный идентификатор пользователя")
 		return
 	}
 	internalService := strings.TrimSpace(c.PostForm("internal_service"))
@@ -221,12 +221,12 @@ func (app *application) updateUserAssignment(c *gin.Context) {
 
 	tx, err := app.db.Begin(c.Request.Context())
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось начать обновление назначения")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось начать обновление назначения")
 		return
 	}
 	defer tx.Rollback(c.Request.Context())
 	if err := lockUserAssignments(c, tx); err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось проверить назначения пользователей")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось проверить назначения пользователей")
 		return
 	}
 
@@ -239,7 +239,7 @@ func (app *application) updateUserAssignment(c *gin.Context) {
 		return
 	}
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось загрузить пользователя")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось загрузить пользователя")
 		return
 	}
 	if role == "approver" {
@@ -261,7 +261,7 @@ func (app *application) updateUserAssignment(c *gin.Context) {
 	if role == "approver" && oldInternalService != internalService {
 		blocked, err := wouldLeaveActiveInternalReviewUnstaffed(c, tx, userID, oldInternalService)
 		if err != nil {
-			c.String(http.StatusInternalServerError, "Не удалось проверить активные внутренние согласования")
+			respondMessage(c, http.StatusInternalServerError, "Не удалось проверить активные внутренние согласования")
 			return
 		}
 		if blocked {
@@ -273,7 +273,7 @@ func (app *application) updateUserAssignment(c *gin.Context) {
 		UPDATE users SET internal_service = NULLIF($2, ''), is_committee_chair = $3 WHERE id = $1
 	`, userID, internalService, isCommitteeChair)
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось обновить назначение пользователя")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось обновить назначение пользователя")
 		return
 	}
 	if err := app.writeAudit(c.Request.Context(), tx, c.MustGet("user").(user), auditRecord{
@@ -281,11 +281,11 @@ func (app *application) updateUserAssignment(c *gin.Context) {
 		TargetLabel: fullName + " · " + email,
 		Details:     assignmentDetails(role, internalService, isCommitteeChair),
 	}); err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось записать событие аудита")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось записать событие аудита")
 		return
 	}
 	if err := tx.Commit(c.Request.Context()); err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось сохранить назначение пользователя")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось сохранить назначение пользователя")
 		return
 	}
 	c.Redirect(http.StatusSeeOther, "/admin/users?assignment_updated=1")
@@ -344,7 +344,7 @@ func (app *application) resetUserPassword(c *gin.Context) {
 	currentUser := c.MustGet("user").(user)
 	userID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil || userID < 1 {
-		c.String(http.StatusBadRequest, "Некорректный идентификатор пользователя")
+		respondMessage(c, http.StatusBadRequest, "Некорректный идентификатор пользователя")
 		return
 	}
 	values := gin.H{"ResetUserID": userID}
@@ -364,12 +364,12 @@ func (app *application) resetUserPassword(c *gin.Context) {
 	}
 	passwordHash, err := hashPassword(password)
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось обработать временный пароль")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось обработать временный пароль")
 		return
 	}
 	tx, err := app.db.Begin(c.Request.Context())
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось начать сброс пароля")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось начать сброс пароля")
 		return
 	}
 	defer tx.Rollback(c.Request.Context())
@@ -385,22 +385,22 @@ func (app *application) resetUserPassword(c *gin.Context) {
 		return
 	}
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось обновить пароль пользователя")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось обновить пароль пользователя")
 		return
 	}
 	if _, err := tx.Exec(c.Request.Context(), `DELETE FROM sessions WHERE user_id = $1`, userID); err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось завершить действующие сессии пользователя")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось завершить действующие сессии пользователя")
 		return
 	}
 	if err := app.writeAudit(c.Request.Context(), tx, currentUser, auditRecord{
 		EventType: "user.password_reset", TargetType: "user", TargetID: &userID,
 		TargetLabel: targetName + " · " + targetEmail,
 	}); err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось записать событие аудита")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось записать событие аудита")
 		return
 	}
 	if err := tx.Commit(c.Request.Context()); err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось сохранить временный пароль")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось сохранить временный пароль")
 		return
 	}
 	c.Redirect(http.StatusSeeOther, "/admin/users?password_reset=1")
@@ -410,7 +410,7 @@ func (app *application) deleteUser(c *gin.Context) {
 	currentUser := c.MustGet("user").(user)
 	userID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil || userID < 1 {
-		c.String(http.StatusBadRequest, "Некорректный идентификатор пользователя")
+		respondMessage(c, http.StatusBadRequest, "Некорректный идентификатор пользователя")
 		return
 	}
 	if userID == currentUser.ID {
@@ -419,12 +419,12 @@ func (app *application) deleteUser(c *gin.Context) {
 	}
 	tx, err := app.db.Begin(c.Request.Context())
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось начать удаление пользователя")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось начать удаление пользователя")
 		return
 	}
 	defer tx.Rollback(c.Request.Context())
 	if err := lockUserAssignments(c, tx); err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось проверить назначения пользователей")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось проверить назначения пользователей")
 		return
 	}
 
@@ -436,7 +436,7 @@ func (app *application) deleteUser(c *gin.Context) {
 		WHERE p.user_id = $1 AND r.status = 'active' AND p.decision IS NULL
 	`, userID).Scan(&pendingApprovals)
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось проверить активные согласования")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось проверить активные согласования")
 		return
 	}
 	if pendingApprovals > 0 {
@@ -453,13 +453,13 @@ func (app *application) deleteUser(c *gin.Context) {
 		return
 	}
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось загрузить пользователя")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось загрузить пользователя")
 		return
 	}
 	if targetRole == "approver" {
 		blocked, err := wouldLeaveActiveInternalReviewUnstaffed(c, tx, userID, targetService)
 		if err != nil {
-			c.String(http.StatusInternalServerError, "Не удалось проверить активные внутренние согласования")
+			respondMessage(c, http.StatusInternalServerError, "Не удалось проверить активные внутренние согласования")
 			return
 		}
 		if blocked {
@@ -477,22 +477,22 @@ func (app *application) deleteUser(c *gin.Context) {
 		return
 	}
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось удалить пользователя")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось удалить пользователя")
 		return
 	}
 	if _, err := tx.Exec(c.Request.Context(), `DELETE FROM sessions WHERE user_id = $1`, userID); err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось завершить сессии пользователя")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось завершить сессии пользователя")
 		return
 	}
 	if err := app.writeAudit(c.Request.Context(), tx, currentUser, auditRecord{
 		EventType: "user.deactivated", TargetType: "user", TargetID: &userID,
 		TargetLabel: targetName + " · " + targetEmail,
 	}); err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось записать событие аудита")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось записать событие аудита")
 		return
 	}
 	if err := tx.Commit(c.Request.Context()); err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось завершить удаление пользователя")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось завершить удаление пользователя")
 		return
 	}
 	c.Redirect(http.StatusSeeOther, "/admin/users?user_deleted=1")
@@ -525,7 +525,7 @@ func (app *application) changePassword(c *gin.Context) {
 	if err := app.db.QueryRow(c.Request.Context(), `
 		SELECT password_hash FROM users WHERE id = $1 AND active = TRUE
 	`, usr.ID).Scan(&currentHash); err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось проверить текущий пароль")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось проверить текущий пароль")
 		return
 	}
 	if !verifyPassword(currentPassword, currentHash) {
@@ -547,12 +547,12 @@ func (app *application) changePassword(c *gin.Context) {
 
 	newHash, err := hashPassword(newPassword)
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось обработать новый пароль")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось обработать новый пароль")
 		return
 	}
 	tx, err := app.db.Begin(c.Request.Context())
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось начать смену пароля")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось начать смену пароля")
 		return
 	}
 	defer tx.Rollback(c.Request.Context())
@@ -562,18 +562,18 @@ func (app *application) changePassword(c *gin.Context) {
 		WHERE id = $1
 	`, usr.ID, newHash)
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось сохранить новый пароль")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось сохранить новый пароль")
 		return
 	}
 	if err := app.writeAudit(c.Request.Context(), tx, usr, auditRecord{
 		EventType: "user.password_changed", TargetType: "user", TargetID: &usr.ID,
 		TargetLabel: usr.FullName + " · " + usr.Email,
 	}); err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось записать событие аудита")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось записать событие аудита")
 		return
 	}
 	if err := tx.Commit(c.Request.Context()); err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось сохранить новый пароль")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось сохранить новый пароль")
 		return
 	}
 	c.Redirect(http.StatusSeeOther, "/")

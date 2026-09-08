@@ -133,16 +133,16 @@ func (app *application) showRoundHistory(c *gin.Context) {
 	}
 	kind := c.Param("kind")
 	if !validRoundKind(kind) {
-		c.String(http.StatusNotFound, "Раунд не найден")
+		respondMessage(c, http.StatusNotFound, "Раунд не найден")
 		return
 	}
 	page, err := loadRoundHistoryPage(c.Request.Context(), app.db, c.MustGet("user").(user), questionID, roundID, kind)
 	if errors.Is(err, pgx.ErrNoRows) {
-		c.String(http.StatusNotFound, "Вопрос или раунд не найден")
+		respondMessage(c, http.StatusNotFound, "Вопрос или раунд не найден")
 		return
 	}
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось загрузить историю раунда")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось загрузить историю раунда")
 		return
 	}
 	c.HTML(http.StatusOK, "round-history.html", gin.H{"Title": "История раунда", "User": c.MustGet("user").(user),

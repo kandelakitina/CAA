@@ -90,11 +90,11 @@ func reportRoundLabel(status, outcome string) string {
 func (app *application) showStatusReport(c *gin.Context) {
 	items, err := app.loadStatusReport(c)
 	if err != nil {
-		c.String(500, "Не удалось загрузить статусы")
+		respondMessage(c, 500, "Не удалось загрузить статусы")
 		return
 	}
 	if len(items) > 5000 {
-		c.String(422, "Более 5000 вопросов. Уточните фильтры")
+		respondMessage(c, 422, "Более 5000 вопросов. Уточните фильтры")
 		return
 	}
 	c.HTML(200, "status-report.html", gin.H{"Title": "Статусы согласования", "User": c.MustGet("user"), "CSRFToken": app.templateCSRF(c), "Rows": items, "Query": c.Query("q"), "Status": c.Query("status"), "Archive": c.Query("archive") == "1", "Overdue": c.Query("overdue") == "1", "ExportURL": "/reports/statuses.csv?" + c.Request.URL.Query().Encode()})
@@ -111,11 +111,11 @@ func csvSafe(value string) string {
 func (app *application) exportStatusReport(c *gin.Context) {
 	items, err := app.loadStatusReport(c)
 	if err != nil {
-		c.String(500, "Не удалось выгрузить статусы")
+		respondMessage(c, 500, "Не удалось выгрузить статусы")
 		return
 	}
 	if len(items) > 5000 {
-		c.String(422, "Более 5000 вопросов. Уточните фильтры")
+		respondMessage(c, 422, "Более 5000 вопросов. Уточните фильтры")
 		return
 	}
 	var buffer bytes.Buffer
@@ -133,7 +133,7 @@ func (app *application) exportStatusReport(c *gin.Context) {
 	}
 	w.Flush()
 	if w.Error() != nil {
-		c.String(500, "Не удалось сформировать CSV")
+		respondMessage(c, 500, "Не удалось сформировать CSV")
 		return
 	}
 	c.Header("Content-Disposition", fmt.Sprintf(`attachment; filename="statuses-%s.csv"`, time.Now().Format("2006-01-02")))

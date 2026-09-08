@@ -228,13 +228,13 @@ func (app *application) restartInternalReview(c *gin.Context) {
 	}
 	deadline, err := time.Parse("2006-01-02", strings.TrimSpace(c.PostForm("deadline")))
 	if err != nil {
-		c.String(http.StatusUnprocessableEntity, "Укажите новый срок внутреннего согласования")
+		respondMessage(c, http.StatusUnprocessableEntity, "Укажите новый срок внутреннего согласования")
 		return
 	}
 	today := time.Now()
 	todayDate := time.Date(today.Year(), today.Month(), today.Day(), 0, 0, 0, 0, time.UTC)
 	if deadline.Before(todayDate) {
-		c.String(http.StatusUnprocessableEntity, "Срок внутреннего согласования не может быть в прошлом")
+		respondMessage(c, http.StatusUnprocessableEntity, "Срок внутреннего согласования не может быть в прошлом")
 		return
 	}
 	selected := make(map[string]bool)
@@ -243,7 +243,7 @@ func (app *application) restartInternalReview(c *gin.Context) {
 	}
 	tx, err := app.db.Begin(c.Request.Context())
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось начать повторное согласование")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось начать повторное согласование")
 		return
 	}
 	defer tx.Rollback(c.Request.Context())
@@ -252,26 +252,26 @@ func (app *application) restartInternalReview(c *gin.Context) {
 
 func (app *application) restartInternalReviewInTx(c *gin.Context, tx pgx.Tx, usr user, questionID int64, deadline time.Time, selected map[string]bool) {
 	if err := lockUserAssignments(c, tx); err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось проверить назначения пользователей")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось проверить назначения пользователей")
 		return
 	}
 	var title, status string
 	var updatedAt time.Time
 	err := tx.QueryRow(c.Request.Context(), `SELECT title, status, updated_at FROM questions WHERE id = $1 FOR UPDATE`, questionID).Scan(&title, &status, &updatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
-		c.String(http.StatusNotFound, "Вопрос не найден")
+		respondMessage(c, http.StatusNotFound, "Вопрос не найден")
 		return
 	}
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось загрузить вопрос")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось загрузить вопрос")
 		return
 	}
 	if status != "revision_required" {
-		c.String(http.StatusConflict, "Повторное согласование сейчас недоступно")
+		respondMessage(c, http.StatusConflict, "Повторное согласование сейчас недоступно")
 		return
 	}
 	if !committeeContextMatches(c.PostForm("question_context"), updatedAt) {
-		c.String(http.StatusConflict, "Вопрос изменился. Обновите карточку и проверьте комплект и перенос виз перед повторным согласованием")
+		respondMessage(c, http.StatusConflict, "Вопрос изменился. Обновите карточку и проверьте комплект и перенос виз перед повторным согласованием")
 		return
 	}
 	var previousRoundID int64
@@ -281,26 +281,26 @@ func (app *application) restartInternalReviewInTx(c *gin.Context, tx pgx.Tx, usr
 		ORDER BY completed_at DESC, id DESC LIMIT 1 FOR UPDATE
 	`, questionID).Scan(&previousRoundID)
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось найти предыдущий раунд")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось найти предыдущий раунд")
 		return
 	}
 	files, err := loadRevisionFiles(c.Request.Context(), tx, questionID)
 	if err != nil || len(files) == 0 {
-		c.String(http.StatusUnprocessableEntity, "Вопрос не содержит официальных файлов")
+		respondMessage(c, http.StatusUnprocessableEntity, "Вопрос не содержит официальных файлов")
 		return
 	}
 	sources, err := loadRevisionSourceVisas(c.Request.Context(), tx, previousRoundID)
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось загрузить прежние визы")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось загрузить прежние визы")
 		return
 	}
 	plan, freshCount, carriedCount, err := buildRevisionPlan(files, sources, selected)
 	if err != nil {
-		c.String(http.StatusUnprocessableEntity, err.Error())
+		respondMessage(c, http.StatusUnprocessableEntity, err.Error())
 		return
 	}
 	if !plan.Ready {
-		c.String(http.StatusUnprocessableEntity, plan.BlockReason)
+		respondMessage(c, http.StatusUnprocessableEntity, plan.BlockReason)
 		return
 	}
 	var pendingUploads int
@@ -308,21 +308,21 @@ func (app *application) restartInternalReviewInTx(c *gin.Context, tx pgx.Tx, usr
 		SELECT COUNT(*) FROM question_file_versions v JOIN question_files f ON f.id = v.question_file_id
 		WHERE f.question_id = $1 AND f.status = 'active' AND v.approval_status = 'pending'
 	`, questionID).Scan(&pendingUploads); err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось проверить ожидающие загрузки")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось проверить ожидающие загрузки")
 		return
 	}
 	if pendingUploads > 0 {
-		c.String(http.StatusConflict, "Сначала подтвердите или отклоните ожидающие загрузки")
+		respondMessage(c, http.StatusConflict, "Сначала подтвердите или отклоните ожидающие загрузки")
 		return
 	}
 	activeServices, err := loadActiveServiceCounts(c.Request.Context(), tx)
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось проверить представителей дирекций")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось проверить представителей дирекций")
 		return
 	}
 	for _, service := range requiredInternalServices {
 		if activeServices[service] < 1 {
-			c.String(http.StatusConflict, "Нет активного представителя: "+internalServiceLabel(service))
+			respondMessage(c, http.StatusConflict, "Нет активного представителя: "+internalServiceLabel(service))
 			return
 		}
 	}
@@ -332,7 +332,7 @@ func (app *application) restartInternalReviewInTx(c *gin.Context, tx pgx.Tx, usr
 		SELECT id, $2, $3, decision_text FROM questions WHERE id = $1 RETURNING id
 	`, questionID, deadline, usr.ID).Scan(&roundID)
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось создать повторный раунд")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось создать повторный раунд")
 		return
 	}
 	for _, file := range files {
@@ -351,7 +351,7 @@ func (app *application) restartInternalReviewInTx(c *gin.Context, tx pgx.Tx, usr
 				) VALUES ($1, $2, $3, $4, $5) RETURNING id
 			`, roundID, file.ID, file.CurrentVersion, service, requirementStatus).Scan(&requirementID)
 			if err != nil {
-				c.String(http.StatusInternalServerError, "Не удалось сформировать повторные задания")
+				respondMessage(c, http.StatusInternalServerError, "Не удалось сформировать повторные задания")
 				return
 			}
 			if !fresh {
@@ -363,7 +363,7 @@ func (app *application) restartInternalReviewInTx(c *gin.Context, tx pgx.Tx, usr
 				`, requirementID, source.Decision, source.Comment, source.DecidedBy,
 					source.DecidedAt, source.VisaID, usr.ID)
 				if err != nil {
-					c.String(http.StatusInternalServerError, "Не удалось перенести прежние визы")
+					respondMessage(c, http.StatusInternalServerError, "Не удалось перенести прежние визы")
 					return
 				}
 			}
@@ -387,7 +387,7 @@ func (app *application) restartInternalReviewInTx(c *gin.Context, tx pgx.Tx, usr
 		err = tx.Commit(c.Request.Context())
 	}
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось запустить повторное согласование")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось запустить повторное согласование")
 		return
 	}
 	c.Redirect(http.StatusSeeOther, fmt.Sprintf("/questions/%d", questionID))

@@ -179,7 +179,7 @@ func (app *application) startApproval(c *gin.Context) {
 	defer cancel()
 	tx, err := app.db.Begin(ctx)
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось начать согласование")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось начать согласование")
 		return
 	}
 	defer tx.Rollback(ctx)
@@ -191,11 +191,11 @@ func (app *application) startApproval(c *gin.Context) {
 		SELECT current_version, status, title FROM documents WHERE id = $1 FOR UPDATE
 	`, documentID).Scan(&versionNo, &documentStatus, &documentTitle)
 	if errors.Is(err, pgx.ErrNoRows) {
-		c.String(http.StatusNotFound, "Документ не найден")
+		respondMessage(c, http.StatusNotFound, "Документ не найден")
 		return
 	}
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось прочитать документ")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось прочитать документ")
 		return
 	}
 	if documentStatus != "draft" {
@@ -204,7 +204,7 @@ func (app *application) startApproval(c *gin.Context) {
 	}
 	var activeCount int
 	if err := tx.QueryRow(ctx, `SELECT COUNT(*) FROM approval_rounds WHERE document_id = $1 AND status = 'active'`, documentID).Scan(&activeCount); err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось проверить согласование")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось проверить согласование")
 		return
 	}
 	if activeCount > 0 {
@@ -217,7 +217,7 @@ func (app *application) startApproval(c *gin.Context) {
 		WHERE id = ANY($1) AND active = TRUE AND role IN ('committee', 'approver')
 	`, participantIDs)
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось проверить участников")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось проверить участников")
 		return
 	}
 	roles := make(map[int64]string)
@@ -226,14 +226,14 @@ func (app *application) startApproval(c *gin.Context) {
 		var role string
 		if err := userRows.Scan(&id, &role); err != nil {
 			userRows.Close()
-			c.String(http.StatusInternalServerError, "Не удалось прочитать участников")
+			respondMessage(c, http.StatusInternalServerError, "Не удалось прочитать участников")
 			return
 		}
 		roles[id] = role
 	}
 	if err := userRows.Err(); err != nil {
 		userRows.Close()
-		c.String(http.StatusInternalServerError, "Не удалось проверить список участников")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось проверить список участников")
 		return
 	}
 	userRows.Close()
@@ -249,7 +249,7 @@ func (app *application) startApproval(c *gin.Context) {
 		RETURNING id
 	`, documentID, versionNo, usr.ID, deadline).Scan(&roundID)
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось создать раунд согласования")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось создать раунд согласования")
 		return
 	}
 	for _, id := range participantIDs {
@@ -257,12 +257,12 @@ func (app *application) startApproval(c *gin.Context) {
 			INSERT INTO approval_participants (round_id, user_id, role_snapshot)
 			VALUES ($1, $2, $3)
 		`, roundID, id, roles[id]); err != nil {
-			c.String(http.StatusInternalServerError, "Не удалось назначить участников")
+			respondMessage(c, http.StatusInternalServerError, "Не удалось назначить участников")
 			return
 		}
 	}
 	if _, err := tx.Exec(ctx, `UPDATE documents SET status = 'in_review', updated_at = NOW() WHERE id = $1`, documentID); err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось изменить статус документа")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось изменить статус документа")
 		return
 	}
 	if err := app.writeAudit(ctx, tx, usr, auditRecord{
@@ -270,11 +270,11 @@ func (app *application) startApproval(c *gin.Context) {
 		TargetLabel: documentTitle, DocumentID: &documentID, VersionNo: &versionNo,
 		Details: fmt.Sprintf("Назначено участников: %d", len(participantIDs)),
 	}); err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось записать событие аудита")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось записать событие аудита")
 		return
 	}
 	if err := tx.Commit(ctx); err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось запустить согласование")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось запустить согласование")
 		return
 	}
 	c.Redirect(http.StatusSeeOther, fmt.Sprintf("/documents/%d", documentID))
@@ -297,11 +297,11 @@ func (app *application) respondToApproval(c *gin.Context) {
 		WHERE r.document_id = $1 AND r.status = 'active' AND p.user_id = $2 AND p.decision IS NULL
 	`, documentID, usr.ID).Scan(&role)
 	if errors.Is(err, pgx.ErrNoRows) {
-		c.String(http.StatusConflict, "Для вас нет ожидающего ответа по этому документу")
+		respondMessage(c, http.StatusConflict, "Для вас нет ожидающего ответа по этому документу")
 		return
 	}
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось проверить назначение")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось проверить назначение")
 		return
 	}
 	if !validApprovalDecision(role, decision) {
@@ -319,7 +319,7 @@ func (app *application) respondToApproval(c *gin.Context) {
 
 	tx, err := app.db.Begin(c.Request.Context())
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось начать сохранение решения")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось начать сохранение решения")
 		return
 	}
 	defer tx.Rollback(c.Request.Context())
@@ -332,11 +332,11 @@ func (app *application) respondToApproval(c *gin.Context) {
 		  AND p.user_id = $2 AND p.decision IS NULL
 	`, documentID, usr.ID, decision, comment)
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось сохранить решение")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось сохранить решение")
 		return
 	}
 	if command.RowsAffected() != 1 {
-		c.String(http.StatusConflict, "Решение уже было сохранено или согласование закрыто")
+		respondMessage(c, http.StatusConflict, "Решение уже было сохранено или согласование закрыто")
 		return
 	}
 	var roundID int64
@@ -348,7 +348,7 @@ func (app *application) respondToApproval(c *gin.Context) {
 		JOIN documents d ON d.id = r.document_id
 		WHERE r.document_id = $1 AND r.status = 'active'
 	`, documentID).Scan(&roundID, &versionNo, &documentTitle); err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось определить согласование")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось определить согласование")
 		return
 	}
 	if err := app.writeAudit(c.Request.Context(), tx, usr, auditRecord{
@@ -356,11 +356,11 @@ func (app *application) respondToApproval(c *gin.Context) {
 		TargetLabel: documentTitle, DocumentID: &documentID, VersionNo: &versionNo,
 		Details: approvalDecisionLabel(role, decision),
 	}); err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось записать событие аудита")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось записать событие аудита")
 		return
 	}
 	if err := tx.Commit(c.Request.Context()); err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось сохранить решение")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось сохранить решение")
 		return
 	}
 	c.Redirect(http.StatusSeeOther, fmt.Sprintf("/documents/%d", documentID))
@@ -386,7 +386,7 @@ func (app *application) completeApproval(c *gin.Context) {
 	defer cancel()
 	tx, err := app.db.Begin(ctx)
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось завершить согласование")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось завершить согласование")
 		return
 	}
 	defer tx.Rollback(ctx)
@@ -401,16 +401,16 @@ func (app *application) completeApproval(c *gin.Context) {
 		FOR UPDATE OF r
 	`, documentID).Scan(&roundID, &versionNo, &documentTitle)
 	if errors.Is(err, pgx.ErrNoRows) {
-		c.String(http.StatusConflict, "Активное согласование не найдено")
+		respondMessage(c, http.StatusConflict, "Активное согласование не найдено")
 		return
 	}
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось найти согласование")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось найти согласование")
 		return
 	}
 	var pending int
 	if err := tx.QueryRow(ctx, `SELECT COUNT(*) FROM approval_participants WHERE round_id = $1 AND decision IS NULL`, roundID).Scan(&pending); err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось проверить ответы")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось проверить ответы")
 		return
 	}
 	if pending > 0 {
@@ -422,11 +422,11 @@ func (app *application) completeApproval(c *gin.Context) {
 		SET status = 'completed', final_outcome = $2, final_comment = $3, completed_at = NOW()
 		WHERE id = $1
 	`, roundID, outcome, comment); err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось записать итог")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось записать итог")
 		return
 	}
 	if _, err := tx.Exec(ctx, `UPDATE documents SET status = $2, updated_at = NOW() WHERE id = $1`, documentID, outcome); err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось изменить статус документа")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось изменить статус документа")
 		return
 	}
 	if err := app.writeAudit(ctx, tx, c.MustGet("user").(user), auditRecord{
@@ -434,11 +434,11 @@ func (app *application) completeApproval(c *gin.Context) {
 		TargetLabel: documentTitle, DocumentID: &documentID, VersionNo: &versionNo,
 		Details: approvalOutcomeLabel(outcome),
 	}); err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось записать событие аудита")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось записать событие аудита")
 		return
 	}
 	if err := tx.Commit(ctx); err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось завершить согласование")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось завершить согласование")
 		return
 	}
 	c.Redirect(http.StatusSeeOther, fmt.Sprintf("/documents/%d", documentID))
@@ -458,13 +458,13 @@ func (app *application) cancelApproval(c *gin.Context) {
 	defer cancel()
 	tx, err := app.db.Begin(ctx)
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось отменить согласование")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось отменить согласование")
 		return
 	}
 	defer tx.Rollback(ctx)
 	var documentTitle string
 	if err := tx.QueryRow(ctx, `SELECT title FROM documents WHERE id = $1 FOR UPDATE`, documentID).Scan(&documentTitle); err != nil {
-		c.String(http.StatusConflict, "Документ не найден")
+		respondMessage(c, http.StatusConflict, "Документ не найден")
 		return
 	}
 	var roundID int64
@@ -476,26 +476,26 @@ func (app *application) cancelApproval(c *gin.Context) {
 		RETURNING id, version_no
 	`, documentID, comment).Scan(&roundID, &versionNo)
 	if errors.Is(err, pgx.ErrNoRows) {
-		c.String(http.StatusConflict, "Активное согласование не найдено")
+		respondMessage(c, http.StatusConflict, "Активное согласование не найдено")
 		return
 	}
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось отменить согласование")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось отменить согласование")
 		return
 	}
 	if _, err := tx.Exec(ctx, `UPDATE documents SET status = 'draft', updated_at = NOW() WHERE id = $1`, documentID); err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось изменить статус документа")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось изменить статус документа")
 		return
 	}
 	if err := app.writeAudit(ctx, tx, c.MustGet("user").(user), auditRecord{
 		EventType: "approval.cancelled", TargetType: "approval_round", TargetID: &roundID,
 		TargetLabel: documentTitle, DocumentID: &documentID, VersionNo: &versionNo,
 	}); err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось записать событие аудита")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось записать событие аудита")
 		return
 	}
 	if err := tx.Commit(ctx); err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось отменить согласование")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось отменить согласование")
 		return
 	}
 	c.Redirect(http.StatusSeeOther, fmt.Sprintf("/documents/%d", documentID))
@@ -504,7 +504,7 @@ func (app *application) cancelApproval(c *gin.Context) {
 func approvalDocumentID(c *gin.Context) (int64, bool) {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil || id < 1 {
-		c.String(http.StatusBadRequest, "Некорректный идентификатор документа")
+		respondMessage(c, http.StatusBadRequest, "Некорректный идентификатор документа")
 		return 0, false
 	}
 	return id, true

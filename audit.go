@@ -71,7 +71,7 @@ func (app *application) writeAudit(ctx context.Context, executor auditExecutor, 
 func (app *application) showAuditLog(c *gin.Context) {
 	filters, err := parseAuditFilters(c)
 	if err != nil {
-		c.String(http.StatusBadRequest, err.Error())
+		respondMessage(c, http.StatusBadRequest, err.Error())
 		return
 	}
 
@@ -89,7 +89,7 @@ func (app *application) showAuditLog(c *gin.Context) {
 		LIMIT 200
 	`, filters.EventType, filters.ActorID, filters.DocumentID, filters.DateFrom, filters.DateTo)
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось загрузить журнал аудита")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось загрузить журнал аудита")
 		return
 	}
 	defer rows.Close()
@@ -104,7 +104,7 @@ func (app *application) showAuditLog(c *gin.Context) {
 		var createdAt time.Time
 		if err := rows.Scan(&item.ID, &item.ActorName, &item.ActorEmail, &role, &eventType,
 			&item.TargetLabel, &documentID, &questionID, &versionNo, &item.Details, &createdAt); err != nil {
-			c.String(http.StatusInternalServerError, "Не удалось прочитать журнал аудита")
+			respondMessage(c, http.StatusInternalServerError, "Не удалось прочитать журнал аудита")
 			return
 		}
 		item.ActorRole = roleLabel(role)
@@ -122,13 +122,13 @@ func (app *application) showAuditLog(c *gin.Context) {
 		events = append(events, item)
 	}
 	if err := rows.Err(); err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось прочитать журнал аудита")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось прочитать журнал аудита")
 		return
 	}
 
 	actors, err := app.listAuditActors(c.Request.Context())
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось загрузить список пользователей")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось загрузить список пользователей")
 		return
 	}
 	c.HTML(http.StatusOK, "audit.html", gin.H{

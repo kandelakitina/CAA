@@ -76,15 +76,15 @@ func (app *application) showQuestionEdit(c *gin.Context) {
 	}
 	state, err := loadQuestionEdit(c.Request.Context(), app.db, id, false)
 	if errors.Is(err, pgx.ErrNoRows) {
-		c.String(http.StatusNotFound, "Вопрос не найден")
+		respondMessage(c, http.StatusNotFound, "Вопрос не найден")
 		return
 	}
 	if errors.Is(err, errQuestionCannotEdit) {
-		c.String(http.StatusConflict, err.Error())
+		respondMessage(c, http.StatusConflict, err.Error())
 		return
 	}
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось загрузить черновик")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось загрузить черновик")
 		return
 	}
 	app.renderQuestionEdit(c, http.StatusOK, id, state.Input, state.UpdatedAt.Format(time.RFC3339Nano), "")
@@ -109,13 +109,13 @@ func (app *application) updateQuestion(c *gin.Context) {
 	}
 	tx, err := app.db.Begin(c.Request.Context())
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось начать сохранение черновика")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось начать сохранение черновика")
 		return
 	}
 	err = app.updateQuestionTransaction(c.Request.Context(), tx, c.MustGet("user").(user), id, normalized, deadline, expected)
 	switch {
 	case errors.Is(err, pgx.ErrNoRows):
-		c.String(http.StatusNotFound, "Вопрос не найден")
+		respondMessage(c, http.StatusNotFound, "Вопрос не найден")
 	case errors.Is(err, errQuestionCannotEdit), errors.Is(err, errQuestionEditConflict):
 		app.renderQuestionEdit(c, http.StatusConflict, id, input, token, err.Error())
 	case err != nil:

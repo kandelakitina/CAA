@@ -8,10 +8,7 @@
   <link rel="stylesheet" href="/static/app.css">
 </head>
 <body>
-  <header class="topbar">
-    <div><p class="eyebrow">Neva Concert Hall</p><strong>Корпоративные согласования</strong></div>
-    <div class="account">{{ template "workspace-nav" . }}</div>
-  </header>
+  {{ template "workspace-header" . }}
   <main class="content">
     {{ if .Archived }}<div class="alert">Вопрос в архиве. Доступны просмотр и скачивание истории.</div>{{ end }}
     <section class="card dashboard-card">

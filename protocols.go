@@ -124,12 +124,12 @@ func (app *application) listProtocols(c *gin.Context) {
 	usr := c.MustGet("user").(user)
 	protocols, err := app.loadProtocolList(c.Request.Context())
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось загрузить протоколы")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось загрузить протоколы")
 		return
 	}
 	candidates, err := app.loadProtocolCandidates(c.Request.Context())
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось загрузить вопросы для протокола")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось загрузить вопросы для протокола")
 		return
 	}
 	c.HTML(http.StatusOK, "protocols.html", gin.H{
@@ -196,17 +196,17 @@ func (app *application) loadProtocolCandidates(ctx context.Context) ([]protocolC
 func (app *application) createProtocol(c *gin.Context) {
 	usr := c.MustGet("user").(user)
 	if err := c.Request.ParseForm(); err != nil {
-		c.String(http.StatusBadRequest, "Не удалось прочитать состав протокола")
+		respondMessage(c, http.StatusBadRequest, "Не удалось прочитать состав протокола")
 		return
 	}
 	selections, err := parseProtocolSelections(c.Request.PostForm)
 	if err != nil {
-		c.String(http.StatusUnprocessableEntity, err.Error())
+		respondMessage(c, http.StatusUnprocessableEntity, err.Error())
 		return
 	}
 	tx, err := app.db.Begin(c.Request.Context())
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось начать формирование протокола")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось начать формирование протокола")
 		return
 	}
 	defer tx.Rollback(c.Request.Context())
@@ -242,17 +242,17 @@ func (app *application) createProtocol(c *gin.Context) {
 			LIMIT 1 FOR UPDATE OF question, round
 		`, selection.QuestionID).Scan(&item.RoundID, &item.Title, &item.Summary, &item.DecisionText, &item.ChairName, &item.LastVote)
 		if errors.Is(err, pgx.ErrNoRows) {
-			c.String(http.StatusConflict, "Один из вопросов уже включён в протокол или больше не доступен")
+			respondMessage(c, http.StatusConflict, "Один из вопросов уже включён в протокол или больше не доступен")
 			return
 		}
 		if err != nil {
-			c.String(http.StatusInternalServerError, "Не удалось проверить вопросы протокола")
+			respondMessage(c, http.StatusInternalServerError, "Не удалось проверить вопросы протокола")
 			return
 		}
 		if chairName == "" {
 			chairName = item.ChairName
 		} else if chairName != item.ChairName {
-			c.String(http.StatusConflict, "Вопросы с разными председателями нужно оформить отдельными протоколами")
+			respondMessage(c, http.StatusConflict, "Вопросы с разными председателями нужно оформить отдельными протоколами")
 			return
 		}
 		if item.LastVote.After(meetingAt) {
@@ -268,7 +268,7 @@ func (app *application) createProtocol(c *gin.Context) {
 		RETURNING last_number
 	`, year).Scan(&sequence)
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось присвоить номер протокола")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось присвоить номер протокола")
 		return
 	}
 	var protocolID int64
@@ -301,7 +301,7 @@ func (app *application) createProtocol(c *gin.Context) {
 		err = tx.Commit(c.Request.Context())
 	}
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось сохранить протокол")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось сохранить протокол")
 		return
 	}
 	c.Redirect(http.StatusSeeOther, fmt.Sprintf("/protocols/%d", protocolID))
@@ -314,11 +314,11 @@ func (app *application) showProtocol(c *gin.Context) {
 	}
 	view, err := app.loadProtocol(c.Request.Context(), protocolID)
 	if errors.Is(err, pgx.ErrNoRows) {
-		c.String(http.StatusNotFound, "Протокол не найден")
+		respondMessage(c, http.StatusNotFound, "Протокол не найден")
 		return
 	}
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось загрузить протокол")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось загрузить протокол")
 		return
 	}
 	usr := c.MustGet("user").(user)
@@ -447,16 +447,16 @@ func (app *application) downloadProtocolWord(c *gin.Context) {
 	}
 	view, err := app.loadProtocol(c.Request.Context(), protocolID)
 	if errors.Is(err, pgx.ErrNoRows) {
-		c.String(http.StatusNotFound, "Протокол не найден")
+		respondMessage(c, http.StatusNotFound, "Протокол не найден")
 		return
 	}
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось сформировать Word-файл")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось сформировать Word-файл")
 		return
 	}
 	content, err := renderProtocolWord(view)
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось сформировать Word-файл")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось сформировать Word-файл")
 		return
 	}
 	filename := fmt.Sprintf("protocol-%s.doc", strings.ReplaceAll(view.Number, "/", "-"))
@@ -486,7 +486,7 @@ func (app *application) deleteProtocol(c *gin.Context) {
 	}
 	tx, err := app.db.Begin(c.Request.Context())
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось начать удаление протокола")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось начать удаление протокола")
 		return
 	}
 	defer tx.Rollback(c.Request.Context())
@@ -495,7 +495,7 @@ func (app *application) deleteProtocol(c *gin.Context) {
 		SELECT sequence_no, year FROM protocols WHERE id = $1 FOR UPDATE
 	`, protocolID).Scan(&sequence, &year)
 	if errors.Is(err, pgx.ErrNoRows) {
-		c.String(http.StatusNotFound, "Протокол не найден")
+		respondMessage(c, http.StatusNotFound, "Протокол не найден")
 		return
 	}
 	if err == nil {
@@ -513,7 +513,7 @@ func (app *application) deleteProtocol(c *gin.Context) {
 		err = tx.Commit(c.Request.Context())
 	}
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось удалить протокол")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось удалить протокол")
 		return
 	}
 	c.Redirect(http.StatusSeeOther, "/protocols")

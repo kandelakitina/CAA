@@ -113,23 +113,23 @@ func (app *application) startCommitteeVote(c *gin.Context) {
 	}
 	deadline, err := time.Parse("2006-01-02", strings.TrimSpace(c.PostForm("deadline")))
 	if err != nil {
-		c.String(http.StatusUnprocessableEntity, "Укажите срок голосования")
+		respondMessage(c, http.StatusUnprocessableEntity, "Укажите срок голосования")
 		return
 	}
 	now := time.Now()
 	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
 	if deadline.Before(today) {
-		c.String(http.StatusUnprocessableEntity, "Срок голосования не может быть в прошлом")
+		respondMessage(c, http.StatusUnprocessableEntity, "Срок голосования не может быть в прошлом")
 		return
 	}
 	tx, err := app.db.Begin(c.Request.Context())
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось начать передачу на Комитет")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось начать передачу на Комитет")
 		return
 	}
 	defer tx.Rollback(c.Request.Context())
 	if err := lockUserAssignments(c, tx); err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось зафиксировать состав Комитета")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось зафиксировать состав Комитета")
 		return
 	}
 	var title, decisionText, status string
@@ -138,19 +138,19 @@ func (app *application) startCommitteeVote(c *gin.Context) {
 		SELECT title, decision_text, status, updated_at FROM questions WHERE id = $1 FOR UPDATE
 	`, questionID).Scan(&title, &decisionText, &status, &updatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
-		c.String(http.StatusNotFound, "Вопрос не найден")
+		respondMessage(c, http.StatusNotFound, "Вопрос не найден")
 		return
 	}
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось загрузить вопрос")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось загрузить вопрос")
 		return
 	}
 	if status != "ready_for_committee" && status != "rejected" && status != "no_quorum" {
-		c.String(http.StatusConflict, "Вопрос пока нельзя передать на Комитет")
+		respondMessage(c, http.StatusConflict, "Вопрос пока нельзя передать на Комитет")
 		return
 	}
 	if !committeeContextMatches(c.PostForm("question_context"), updatedAt) {
-		c.String(http.StatusConflict, "Вопрос изменился. Обновите карточку и проверьте формулировку решения и комплект перед передачей на Комитет")
+		respondMessage(c, http.StatusConflict, "Вопрос изменился. Обновите карточку и проверьте формулировку решения и комплект перед передачей на Комитет")
 		return
 	}
 	fileRows, err := tx.Query(c.Request.Context(), `
@@ -159,7 +159,7 @@ func (app *application) startCommitteeVote(c *gin.Context) {
 		ORDER BY created_at, id FOR UPDATE
 	`, questionID)
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось зафиксировать комплект")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось зафиксировать комплект")
 		return
 	}
 	var files []committeeFrozenFile
@@ -167,19 +167,19 @@ func (app *application) startCommitteeVote(c *gin.Context) {
 		var file committeeFrozenFile
 		if err := fileRows.Scan(&file.ID, &file.Title, &file.VersionNo); err != nil {
 			fileRows.Close()
-			c.String(http.StatusInternalServerError, "Не удалось прочитать комплект")
+			respondMessage(c, http.StatusInternalServerError, "Не удалось прочитать комплект")
 			return
 		}
 		files = append(files, file)
 	}
 	if err := fileRows.Err(); err != nil {
 		fileRows.Close()
-		c.String(http.StatusInternalServerError, "Не удалось прочитать комплект")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось прочитать комплект")
 		return
 	}
 	fileRows.Close()
 	if len(files) == 0 {
-		c.String(http.StatusUnprocessableEntity, "Комплект вопроса пуст")
+		respondMessage(c, http.StatusUnprocessableEntity, "Комплект вопроса пуст")
 		return
 	}
 	memberRows, err := tx.Query(c.Request.Context(), `
@@ -188,7 +188,7 @@ func (app *application) startCommitteeVote(c *gin.Context) {
 		ORDER BY full_name, id FOR UPDATE
 	`)
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось загрузить состав Комитета")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось загрузить состав Комитета")
 		return
 	}
 	type member struct {
@@ -203,7 +203,7 @@ func (app *application) startCommitteeVote(c *gin.Context) {
 		var item member
 		if err := memberRows.Scan(&item.ID, &item.Name, &item.Email, &item.IsChair); err != nil {
 			memberRows.Close()
-			c.String(http.StatusInternalServerError, "Не удалось прочитать состав Комитета")
+			respondMessage(c, http.StatusInternalServerError, "Не удалось прочитать состав Комитета")
 			return
 		}
 		if item.IsChair {
@@ -213,12 +213,12 @@ func (app *application) startCommitteeVote(c *gin.Context) {
 	}
 	if err := memberRows.Err(); err != nil {
 		memberRows.Close()
-		c.String(http.StatusInternalServerError, "Не удалось прочитать состав Комитета")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось прочитать состав Комитета")
 		return
 	}
 	memberRows.Close()
 	if len(members) == 0 || chairCount != 1 {
-		c.String(http.StatusUnprocessableEntity, "Для запуска нужны активные члены Комитета и ровно один председатель")
+		respondMessage(c, http.StatusUnprocessableEntity, "Для запуска нужны активные члены Комитета и ровно один председатель")
 		return
 	}
 	var roundID int64
@@ -228,7 +228,7 @@ func (app *application) startCommitteeVote(c *gin.Context) {
 		) VALUES ($1, $2, $3, $4, $5) RETURNING id
 	`, questionID, deadline, decisionText, len(members), usr.ID).Scan(&roundID)
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось создать голосование")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось создать голосование")
 		return
 	}
 	for _, file := range files {
@@ -236,7 +236,7 @@ func (app *application) startCommitteeVote(c *gin.Context) {
 			INSERT INTO committee_vote_round_files (round_id, question_file_id, version_no)
 			VALUES ($1, $2, $3)
 		`, roundID, file.ID, file.VersionNo); err != nil {
-			c.String(http.StatusInternalServerError, "Не удалось зафиксировать версии файлов")
+			respondMessage(c, http.StatusInternalServerError, "Не удалось зафиксировать версии файлов")
 			return
 		}
 	}
@@ -246,7 +246,7 @@ func (app *application) startCommitteeVote(c *gin.Context) {
 				round_id, user_id, name_snapshot, email_snapshot, is_chair_snapshot
 			) VALUES ($1, $2, $3, $4, $5)
 		`, roundID, member.ID, member.Name, member.Email, member.IsChair); err != nil {
-			c.String(http.StatusInternalServerError, "Не удалось зафиксировать состав Комитета")
+			respondMessage(c, http.StatusInternalServerError, "Не удалось зафиксировать состав Комитета")
 			return
 		}
 	}
@@ -264,7 +264,7 @@ func (app *application) startCommitteeVote(c *gin.Context) {
 		err = tx.Commit(c.Request.Context())
 	}
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось передать вопрос на Комитет")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось передать вопрос на Комитет")
 		return
 	}
 	c.Redirect(http.StatusSeeOther, fmt.Sprintf("/questions/%d", questionID))
@@ -280,7 +280,7 @@ func (app *application) submitCommitteeVote(c *gin.Context) {
 	decision := strings.TrimSpace(c.PostForm("decision"))
 	comment := strings.TrimSpace(c.PostForm("comment"))
 	if err := validateCommitteeDecision(decision, comment); err != nil {
-		c.String(http.StatusUnprocessableEntity, err.Error())
+		respondMessage(c, http.StatusUnprocessableEntity, err.Error())
 		return
 	}
 	var targetFileID int64
@@ -288,23 +288,23 @@ func (app *application) submitCommitteeVote(c *gin.Context) {
 		var err error
 		targetFileID, err = strconv.ParseInt(value, 10, 64)
 		if err != nil || targetFileID < 1 {
-			c.String(http.StatusBadRequest, "Некорректная привязка комментария")
+			respondMessage(c, http.StatusBadRequest, "Некорректная привязка комментария")
 			return
 		}
 	}
 	attachments, attachmentStatus, attachmentMessage := receiveVisaAttachments(c)
 	if attachmentMessage != "" {
-		c.String(attachmentStatus, attachmentMessage)
+		respondMessage(c, attachmentStatus, attachmentMessage)
 		return
 	}
 	defer closeQuestionUploads(attachments)
 	if len(attachments) > 0 && app.storage == nil {
-		c.String(http.StatusServiceUnavailable, "S3 не настроен: вложения не сохранены")
+		respondMessage(c, http.StatusServiceUnavailable, "S3 не настроен: вложения не сохранены")
 		return
 	}
 	tx, err := app.db.Begin(c.Request.Context())
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось начать сохранение голоса")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось начать сохранение голоса")
 		return
 	}
 	defer tx.Rollback(c.Request.Context())
@@ -318,11 +318,11 @@ func (app *application) submitCommitteeVote(c *gin.Context) {
 	var title, status string
 	err = tx.QueryRow(c.Request.Context(), `SELECT title, status FROM questions WHERE id = $1 FOR UPDATE`, questionID).Scan(&title, &status)
 	if errors.Is(err, pgx.ErrNoRows) {
-		c.String(http.StatusNotFound, "Вопрос не найден")
+		respondMessage(c, http.StatusNotFound, "Вопрос не найден")
 		return
 	}
 	if err != nil || status != "committee_voting" {
-		c.String(http.StatusConflict, "Голосование вопроса не активно")
+		respondMessage(c, http.StatusConflict, "Голосование вопроса не активно")
 		return
 	}
 	var roundID, participantID int64
@@ -336,21 +336,21 @@ func (app *application) submitCommitteeVote(c *gin.Context) {
 		FOR UPDATE OF participant, round
 	`, questionID, usr.ID).Scan(&roundID, &participantID, &participantStatus, &deadline)
 	if errors.Is(err, pgx.ErrNoRows) {
-		c.String(http.StatusForbidden, "Вы не входите в зафиксированный состав этого голосования")
+		respondMessage(c, http.StatusForbidden, "Вы не входите в зафиксированный состав этого голосования")
 		return
 	}
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось загрузить участие в голосовании")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось загрузить участие в голосовании")
 		return
 	}
 	if participantStatus != "pending" {
-		c.String(http.StatusConflict, "Действующий голос уже отправлен")
+		respondMessage(c, http.StatusConflict, "Действующий голос уже отправлен")
 		return
 	}
 	now := time.Now()
 	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 	if deadline.Before(today) {
-		c.String(http.StatusConflict, "Срок голосования истёк: секретарь должен продлить или закрыть раунд")
+		respondMessage(c, http.StatusConflict, "Срок голосования истёк: секретарь должен продлить или закрыть раунд")
 		return
 	}
 	var targetVersionNo int
@@ -358,10 +358,10 @@ func (app *application) submitCommitteeVote(c *gin.Context) {
 		if err := tx.QueryRow(c.Request.Context(), `
 			SELECT version_no FROM committee_vote_round_files WHERE round_id = $1 AND question_file_id = $2
 		`, roundID, targetFileID).Scan(&targetVersionNo); errors.Is(err, pgx.ErrNoRows) {
-			c.String(http.StatusUnprocessableEntity, "Выбранный файл не входит в замороженный комплект")
+			respondMessage(c, http.StatusUnprocessableEntity, "Выбранный файл не входит в замороженный комплект")
 			return
 		} else if err != nil {
-			c.String(http.StatusInternalServerError, "Не удалось проверить привязку комментария")
+			respondMessage(c, http.StatusInternalServerError, "Не удалось проверить привязку комментария")
 			return
 		}
 	}
@@ -396,7 +396,7 @@ func (app *application) submitCommitteeVote(c *gin.Context) {
 	}
 	if err != nil {
 		log.Printf("save committee vote for question %d: %v", questionID, err)
-		c.String(http.StatusInternalServerError, "Не удалось сохранить голос")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось сохранить голос")
 		return
 	}
 	committed = true
@@ -450,7 +450,7 @@ func (app *application) withdrawCommitteeVote(c *gin.Context) {
 	}
 	tx, err := app.db.Begin(c.Request.Context())
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось начать отзыв голоса")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось начать отзыв голоса")
 		return
 	}
 	defer tx.Rollback(c.Request.Context())
@@ -468,15 +468,15 @@ func (app *application) withdrawCommitteeVote(c *gin.Context) {
 		FOR UPDATE OF vote, participant, round, question
 	`, voteID, questionID, usr.ID).Scan(&participantID, &votedAt, &title)
 	if errors.Is(err, pgx.ErrNoRows) {
-		c.String(http.StatusNotFound, "Действующий голос не найден")
+		respondMessage(c, http.StatusNotFound, "Действующий голос не найден")
 		return
 	}
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось загрузить голос")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось загрузить голос")
 		return
 	}
 	if time.Now().After(votedAt.Add(24 * time.Hour)) {
-		c.String(http.StatusConflict, "С момента голосования прошло более 24 часов")
+		respondMessage(c, http.StatusConflict, "С момента голосования прошло более 24 часов")
 		return
 	}
 	_, err = tx.Exec(c.Request.Context(), `UPDATE committee_votes SET withdrawn_at = NOW() WHERE id = $1`, voteID)
@@ -493,7 +493,7 @@ func (app *application) withdrawCommitteeVote(c *gin.Context) {
 		err = tx.Commit(c.Request.Context())
 	}
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось отозвать голос")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось отозвать голос")
 		return
 	}
 	c.Redirect(http.StatusSeeOther, fmt.Sprintf("/questions/%d", questionID))
@@ -508,12 +508,12 @@ func (app *application) extendCommitteeVote(c *gin.Context) {
 	deadline, err := time.Parse("2006-01-02", strings.TrimSpace(c.PostForm("deadline")))
 	reason := strings.TrimSpace(c.PostForm("reason"))
 	if err != nil || reason == "" || len([]rune(reason)) > 2000 {
-		c.String(http.StatusUnprocessableEntity, "Укажите новый срок и причину длиной до 2 000 знаков")
+		respondMessage(c, http.StatusUnprocessableEntity, "Укажите новый срок и причину длиной до 2 000 знаков")
 		return
 	}
 	tx, err := app.db.Begin(c.Request.Context())
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось начать продление голосования")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось начать продление голосования")
 		return
 	}
 	defer tx.Rollback(c.Request.Context())
@@ -526,15 +526,15 @@ func (app *application) extendCommitteeVote(c *gin.Context) {
 		WHERE round.question_id = $1 AND round.status = 'active' FOR UPDATE OF round, question
 	`, questionID).Scan(&roundID, &oldDeadline, &title)
 	if errors.Is(err, pgx.ErrNoRows) {
-		c.String(http.StatusConflict, "Активное голосование не найдено")
+		respondMessage(c, http.StatusConflict, "Активное голосование не найдено")
 		return
 	}
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось загрузить голосование")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось загрузить голосование")
 		return
 	}
 	if !deadline.After(oldDeadline) {
-		c.String(http.StatusUnprocessableEntity, "Новый срок должен быть позже текущего")
+		respondMessage(c, http.StatusUnprocessableEntity, "Новый срок должен быть позже текущего")
 		return
 	}
 	_, err = tx.Exec(c.Request.Context(), `UPDATE committee_vote_rounds SET deadline = $2 WHERE id = $1`, roundID, deadline)
@@ -549,7 +549,7 @@ func (app *application) extendCommitteeVote(c *gin.Context) {
 		err = tx.Commit(c.Request.Context())
 	}
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось продлить голосование")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось продлить голосование")
 		return
 	}
 	c.Redirect(http.StatusSeeOther, fmt.Sprintf("/questions/%d", questionID))
@@ -563,7 +563,7 @@ func (app *application) closeCommitteeVote(c *gin.Context) {
 	}
 	tx, err := app.db.Begin(c.Request.Context())
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось начать закрытие голосования")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось начать закрытие голосования")
 		return
 	}
 	defer tx.Rollback(c.Request.Context())
@@ -577,17 +577,17 @@ func (app *application) closeCommitteeVote(c *gin.Context) {
 		WHERE round.question_id = $1 AND round.status = 'active' FOR UPDATE OF round, question
 	`, questionID).Scan(&roundID, &roster, &deadline, &title)
 	if errors.Is(err, pgx.ErrNoRows) {
-		c.String(http.StatusConflict, "Активное голосование не найдено")
+		respondMessage(c, http.StatusConflict, "Активное голосование не найдено")
 		return
 	}
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось загрузить голосование")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось загрузить голосование")
 		return
 	}
 	now := time.Now()
 	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 	if !deadline.Before(today) {
-		c.String(http.StatusConflict, "Закрыть голосование вручную можно после истечения срока")
+		respondMessage(c, http.StatusConflict, "Закрыть голосование вручную можно после истечения срока")
 		return
 	}
 	var responded, support int
@@ -599,7 +599,7 @@ func (app *application) closeCommitteeVote(c *gin.Context) {
 		WHERE participant.round_id = $1
 	`, roundID).Scan(&responded, &support)
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось подсчитать голоса")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось подсчитать голоса")
 		return
 	}
 	_, outcome := calculateCommitteeOutcome(roster, responded, support)
@@ -608,7 +608,7 @@ func (app *application) closeCommitteeVote(c *gin.Context) {
 		err = tx.Commit(c.Request.Context())
 	}
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось закрыть голосование")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось закрыть голосование")
 		return
 	}
 	c.Redirect(http.StatusSeeOther, fmt.Sprintf("/questions/%d", questionID))
@@ -622,7 +622,7 @@ func (app *application) cancelCommitteeVote(c *gin.Context) {
 	}
 	tx, err := app.db.Begin(c.Request.Context())
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось начать отмену голосования")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось начать отмену голосования")
 		return
 	}
 	defer tx.Rollback(c.Request.Context())
@@ -634,11 +634,11 @@ func (app *application) cancelCommitteeVote(c *gin.Context) {
 		WHERE round.question_id = $1 AND round.status = 'active' FOR UPDATE OF round, question
 	`, questionID).Scan(&roundID, &title)
 	if errors.Is(err, pgx.ErrNoRows) {
-		c.String(http.StatusConflict, "Активное голосование не найдено")
+		respondMessage(c, http.StatusConflict, "Активное голосование не найдено")
 		return
 	}
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось загрузить голосование")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось загрузить голосование")
 		return
 	}
 	_, err = tx.Exec(c.Request.Context(), `UPDATE committee_vote_rounds SET status = 'cancelled', cancelled_at = NOW() WHERE id = $1`, roundID)
@@ -655,7 +655,7 @@ func (app *application) cancelCommitteeVote(c *gin.Context) {
 		err = tx.Commit(c.Request.Context())
 	}
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось отменить голосование")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось отменить голосование")
 		return
 	}
 	c.Redirect(http.StatusSeeOther, fmt.Sprintf("/questions/%d", questionID))

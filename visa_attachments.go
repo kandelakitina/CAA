@@ -141,7 +141,7 @@ func (app *application) downloadInternalVisaAttachment(c *gin.Context) {
 		return
 	}
 	if app.storage == nil {
-		c.String(http.StatusServiceUnavailable, "S3 не настроен")
+		respondMessage(c, http.StatusServiceUnavailable, "S3 не настроен")
 		return
 	}
 	var objectKey, versionID, filename, contentType string
@@ -159,11 +159,11 @@ func (app *application) downloadInternalVisaAttachment(c *gin.Context) {
 		       OR (question.status = 'cancelled' AND EXISTS (SELECT 1 FROM committee_vote_rounds WHERE question_id = question.id)))
 	`, attachmentID, questionID, usr.Role).Scan(&objectKey, &versionID, &filename, &contentType, &size)
 	if errors.Is(err, pgx.ErrNoRows) {
-		c.String(http.StatusNotFound, "Вложение не найдено")
+		respondMessage(c, http.StatusNotFound, "Вложение не найдено")
 		return
 	}
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось найти вложение")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось найти вложение")
 		return
 	}
 	input := &s3.GetObjectInput{Bucket: &app.storage.bucket, Key: &objectKey}
@@ -175,7 +175,7 @@ func (app *application) downloadInternalVisaAttachment(c *gin.Context) {
 	object, err := app.storage.client.GetObject(ctx, input)
 	if err != nil {
 		log.Printf("download internal visa attachment %d from S3: %v", attachmentID, err)
-		c.String(http.StatusBadGateway, "Не удалось скачать вложение из S3")
+		respondMessage(c, http.StatusBadGateway, "Не удалось скачать вложение из S3")
 		return
 	}
 	defer object.Body.Close()

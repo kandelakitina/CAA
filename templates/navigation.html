@@ -1,3 +1,12 @@
+{{ define "workspace-header" }}
+<header class="topbar">
+  <div>
+    <p class="eyebrow">Neva Concert Hall</p>
+    <strong>Корпоративные согласования</strong>
+  </div>
+  <div class="account">{{ template "workspace-nav" . }}</div>
+</header>
+{{ end }}
 {{ define "theme-switch" }}
 <button type="button" class="theme-toggle" data-theme-toggle role="switch" aria-checked="false" aria-label="Тёмная тема" title="Включить тёмную тему">
   <span class="theme-toggle-thumb" aria-hidden="true"></span>

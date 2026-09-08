@@ -42,30 +42,30 @@ func (app *application) excludeQuestionFile(c *gin.Context) {
 	}
 	reason, err := validateFileExclusionReason(c.PostForm("reason"))
 	if err != nil {
-		c.String(http.StatusUnprocessableEntity, err.Error())
+		respondMessage(c, http.StatusUnprocessableEntity, err.Error())
 		return
 	}
 	expected, err := time.Parse(time.RFC3339Nano, c.PostForm("question_context"))
 	if err != nil {
-		c.String(http.StatusConflict, errQuestionEditConflict.Error())
+		respondMessage(c, http.StatusConflict, errQuestionEditConflict.Error())
 		return
 	}
 	tx, err := app.db.Begin(c.Request.Context())
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось начать исключение файла")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось начать исключение файла")
 		return
 	}
 	err = app.excludeQuestionFileTransaction(c.Request.Context(), tx, c.MustGet("user").(user), questionID, fileID, reason, expected)
 	var rule *fileExclusionRuleError
 	switch {
 	case errors.Is(err, pgx.ErrNoRows):
-		c.String(http.StatusNotFound, "Вопрос или файл не найден")
+		respondMessage(c, http.StatusNotFound, "Вопрос или файл не найден")
 	case errors.Is(err, errFileExclusionConflict), errors.Is(err, errQuestionEditConflict):
-		c.String(http.StatusConflict, err.Error())
+		respondMessage(c, http.StatusConflict, err.Error())
 	case errors.As(err, &rule):
-		c.String(rule.Status, rule.Message)
+		respondMessage(c, rule.Status, rule.Message)
 	case err != nil:
-		c.String(http.StatusInternalServerError, "Не удалось исключить файл")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось исключить файл")
 	default:
 		c.Redirect(http.StatusSeeOther, fmt.Sprintf("/questions/%d", questionID))
 	}

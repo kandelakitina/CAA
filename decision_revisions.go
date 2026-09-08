@@ -117,11 +117,11 @@ func (app *application) showDecisionRevision(c *gin.Context) {
 		var rule *decisionRevisionRuleError
 		switch {
 		case errors.Is(err, pgx.ErrNoRows):
-			c.String(404, "Вопрос не найден")
+			respondMessage(c, 404, "Вопрос не найден")
 		case errors.As(err, &rule):
-			c.String(rule.Status, rule.Message)
+			respondMessage(c, rule.Status, rule.Message)
 		default:
-			c.String(500, "Не удалось загрузить вопрос")
+			respondMessage(c, 500, "Не удалось загрузить вопрос")
 		}
 		return
 	}
@@ -154,7 +154,7 @@ func (app *application) createDecisionRevision(c *gin.Context) {
 	var rule *decisionRevisionRuleError
 	switch {
 	case errors.Is(err, pgx.ErrNoRows):
-		c.String(404, "Вопрос не найден")
+		respondMessage(c, 404, "Вопрос не найден")
 	case errors.As(err, &rule):
 		app.renderDecisionRevision(c, rule.Status, id, input, rule.Message)
 	default:

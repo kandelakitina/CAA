@@ -91,7 +91,7 @@ func (app *application) requireLoginCSRF() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		cookie, err := c.Cookie(loginCSRFCookie)
 		if err != nil || !secureTokenEqual(c.PostForm("_csrf"), app.csrfDigest("login", cookie)) {
-			c.String(http.StatusForbidden, "Форма входа устарела. Обновите страницу и повторите попытку")
+			respondMessage(c, http.StatusForbidden, "Форма входа устарела. Обновите страницу и повторите попытку")
 			c.Abort()
 			return
 		}
@@ -108,7 +108,7 @@ func (app *application) requireCSRFWithLimit(bodyLimit int64) gin.HandlerFunc {
 		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, bodyLimit)
 		sessionToken, err := c.Cookie("session_token")
 		if err != nil || !secureTokenEqual(c.PostForm("_csrf"), app.csrfDigest("session", sessionToken)) {
-			c.String(http.StatusForbidden, "Форма устарела. Обновите страницу и повторите действие")
+			respondMessage(c, http.StatusForbidden, "Форма устарела. Обновите страницу и повторите действие")
 			c.Abort()
 			return
 		}

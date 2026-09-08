@@ -9,13 +9,7 @@
   <script src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.8/dist/htmx.min.js" defer></script>
 </head>
 <body>
-  <header class="topbar">
-    <div>
-      <p class="eyebrow">Neva Concert Hall</p>
-      <strong>Корпоративные согласования</strong>
-    </div>
-    <div class="account">{{ template "workspace-nav" . }}</div>
-  </header>
+  {{ template "workspace-header" . }}
 
   <main class="content">
     <section class="card dashboard-card">

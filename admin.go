@@ -73,13 +73,13 @@ func (app *application) adminDashboard(c *gin.Context) {
 	actor := c.MustGet("user").(user)
 	s, err := loadAdminSnapshot(c.Request.Context(), app.db, actor.ID)
 	if err != nil {
-		c.String(500, "Не удалось загрузить сводку")
+		respondMessage(c, 500, "Не удалось загрузить сводку")
 		return
 	}
 	rows, err := app.db.Query(c.Request.Context(), `SELECT id,'question',title,status,archived_at IS NOT NULL FROM questions
 		UNION ALL SELECT id,'document',title,status,archived_at IS NOT NULL FROM documents ORDER BY 1 DESC LIMIT 200`)
 	if err != nil {
-		c.String(500, "Не удалось загрузить материалы")
+		respondMessage(c, 500, "Не удалось загрузить материалы")
 		return
 	}
 	defer rows.Close()
@@ -87,7 +87,7 @@ func (app *application) adminDashboard(c *gin.Context) {
 	for rows.Next() {
 		var item adminMaterial
 		if err := rows.Scan(&item.ID, &item.Kind, &item.Title, &item.Status, &item.Archived); err != nil {
-			c.String(500, "Не удалось прочитать материалы")
+			respondMessage(c, 500, "Не удалось прочитать материалы")
 			return
 		}
 		if item.Kind == "question" {
@@ -98,7 +98,7 @@ func (app *application) adminDashboard(c *gin.Context) {
 		items = append(items, item)
 	}
 	if rows.Err() != nil {
-		c.String(500, "Не удалось прочитать материалы")
+		respondMessage(c, 500, "Не удалось прочитать материалы")
 		return
 	}
 	c.HTML(200, "admin.html", gin.H{"Title": "Панель администратора", "User": actor, "CSRFToken": app.templateCSRF(c), "Summary": s, "Materials": items, "Done": c.Query("done")})
@@ -128,7 +128,7 @@ func (app *application) previewMaintenance(c *gin.Context) {
 	action := c.PostForm("action")
 	title, phrase, ok := maintenanceAction(action)
 	if !ok {
-		c.String(400, "Неизвестное действие")
+		respondMessage(c, 400, "Неизвестное действие")
 		return
 	}
 	id, _ := strconv.ParseInt(c.PostForm("target_id"), 10, 64)
@@ -139,13 +139,13 @@ func (app *application) previewMaintenance(c *gin.Context) {
 			table = "documents"
 		}
 		if err := app.db.QueryRow(c.Request.Context(), "SELECT title FROM "+table+" WHERE id=$1 AND archived_at IS NULL", id).Scan(&target); err != nil {
-			c.String(404, "Материал не найден или уже в архиве")
+			respondMessage(c, 404, "Материал не найден или уже в архиве")
 			return
 		}
 	}
 	s, err := loadAdminSnapshot(c.Request.Context(), app.db, actor.ID)
 	if err != nil {
-		c.String(500, "Не удалось подготовить подтверждение")
+		respondMessage(c, 500, "Не удалось подготовить подтверждение")
 		return
 	}
 	c.HTML(200, "maintenance.html", gin.H{"Title": title, "User": actor, "CSRFToken": app.templateCSRF(c), "Action": action, "TargetID": id, "Target": target, "Phrase": phrase, "Summary": s, "ConfirmationToken": app.maintenanceToken(actor, action, id, s)})
@@ -159,25 +159,25 @@ func (app *application) executeMaintenance(c *gin.Context) {
 	id, _ := strconv.ParseInt(c.PostForm("target_id"), 10, 64)
 	reason := strings.TrimSpace(c.PostForm("reason"))
 	if !ok || c.PostForm("confirmation") != phrase || reason == "" || len([]rune(reason)) > 2000 {
-		c.String(422, "Укажите причину и точную подтверждающую фразу")
+		respondMessage(c, 422, "Укажите причину и точную подтверждающую фразу")
 		return
 	}
 	// Reauthentication is limited independently of login attempts.
 	key := "maintenance:" + strconv.FormatInt(actor.ID, 10)
 	if allowed, _ := app.loginLimiter.allow(key, time.Now()); !allowed {
-		c.String(429, "Слишком много неверных паролей. Повторите позднее")
+		respondMessage(c, 429, "Слишком много неверных паролей. Повторите позднее")
 		return
 	}
 	var hash string
 	if err := app.db.QueryRow(ctx, "SELECT password_hash FROM users WHERE id=$1 AND active=TRUE AND role='admin'", actor.ID).Scan(&hash); err != nil || !verifyPassword(c.PostForm("password"), hash) {
 		app.loginLimiter.failure(key, time.Now())
-		c.String(403, "Пароль администратора неверен")
+		respondMessage(c, 403, "Пароль администратора неверен")
 		return
 	}
 	app.loginLimiter.success(key)
 	tx, err := app.db.Begin(ctx)
 	if err != nil {
-		c.String(500, "Не удалось начать обслуживание")
+		respondMessage(c, 500, "Не удалось начать обслуживание")
 		return
 	}
 	defer tx.Rollback(ctx)
@@ -187,27 +187,27 @@ func (app *application) executeMaintenance(c *gin.Context) {
 		_, err = tx.Exec(ctx, "LOCK TABLE users, sessions, "+resetTables+" IN ACCESS EXCLUSIVE MODE")
 	}
 	if err != nil {
-		c.String(409, "Система занята. Повторите предварительный просмотр после завершения операций")
+		respondMessage(c, 409, "Система занята. Повторите предварительный просмотр после завершения операций")
 		return
 	}
 	s, err := loadAdminSnapshot(ctx, tx, actor.ID)
 	if err != nil {
-		c.String(500, "Не удалось проверить состав данных")
+		respondMessage(c, 500, "Не удалось проверить состав данных")
 		return
 	}
 	if !secureTokenEqual(c.PostForm("confirmation_token"), app.maintenanceToken(actor, action, id, s)) {
-		c.String(409, "Данные изменились. Выполните предварительный просмотр заново")
+		respondMessage(c, 409, "Данные изменились. Выполните предварительный просмотр заново")
 		return
 	}
 	// Recheck the actor while the users table is locked.
 	var active bool
 	if err = tx.QueryRow(ctx, "SELECT active AND role='admin' AND password_hash=$2 FROM users WHERE id=$1", actor.ID, hash).Scan(&active); err != nil || !active {
-		c.String(403, "Доступ администратора изменился")
+		respondMessage(c, 403, "Доступ администратора изменился")
 		return
 	}
 	if action == "reset" {
 		if s.Files > 0 && app.storage == nil {
-			c.String(409, "Перед сбросом настройте S3 для удаления файлов")
+			respondMessage(c, 409, "Перед сбросом настройте S3 для удаления файлов")
 			return
 		}
 		_, err = tx.Exec(ctx, `INSERT INTO storage_cleanup(endpoint,bucket,object_key,version_id)
@@ -245,7 +245,7 @@ func (app *application) executeMaintenance(c *gin.Context) {
 		err = tx.Commit(ctx)
 	}
 	if err != nil {
-		c.String(500, "Не удалось подтвердить завершение операции. Проверьте состояние в панели перед повтором")
+		respondMessage(c, 500, "Не удалось подтвердить завершение операции. Проверьте состояние в панели перед повтором")
 		return
 	}
 	c.Redirect(303, "/admin?done="+action)
@@ -326,23 +326,23 @@ func (app *application) restoreUser(c *gin.Context) {
 	}
 	tx, err := app.db.Begin(c.Request.Context())
 	if err != nil {
-		c.String(500, "Не удалось начать восстановление")
+		respondMessage(c, 500, "Не удалось начать восстановление")
 		return
 	}
 	defer tx.Rollback(c.Request.Context())
 	if err = lockUserAssignments(c, tx); err != nil {
-		c.String(500, "Не удалось проверить назначения")
+		respondMessage(c, 500, "Не удалось проверить назначения")
 		return
 	}
 	var role, name string
 	var chair bool
 	err = tx.QueryRow(c.Request.Context(), "SELECT role,full_name,is_committee_chair FROM users WHERE id=$1 AND active=FALSE FOR UPDATE", id).Scan(&role, &name, &chair)
 	if err != nil {
-		c.String(404, "Отключённый пользователь не найден")
+		respondMessage(c, 404, "Отключённый пользователь не найден")
 		return
 	}
 	if err = ensureUniqueActiveAssignment(c, tx, role, chair, id); err != nil {
-		c.String(409, "Это назначение уже занято. Сначала освободите роль секретаря или председателя")
+		respondMessage(c, 409, "Это назначение уже занято. Сначала освободите роль секретаря или председателя")
 		return
 	}
 	_, err = tx.Exec(c.Request.Context(), "UPDATE users SET active=TRUE,must_change_password=TRUE WHERE id=$1", id)
@@ -353,7 +353,7 @@ func (app *application) restoreUser(c *gin.Context) {
 		err = tx.Commit(c.Request.Context())
 	}
 	if err != nil {
-		c.String(500, "Не удалось восстановить доступ")
+		respondMessage(c, 500, "Не удалось восстановить доступ")
 		return
 	}
 	c.Redirect(303, "/admin/users")
@@ -365,13 +365,13 @@ func (app *application) revokeUserSessions(c *gin.Context) {
 	}
 	tx, err := app.db.Begin(c.Request.Context())
 	if err != nil {
-		c.String(500, "Не удалось завершить сессии")
+		respondMessage(c, 500, "Не удалось завершить сессии")
 		return
 	}
 	defer tx.Rollback(c.Request.Context())
 	var name string
 	if err = tx.QueryRow(c.Request.Context(), "SELECT full_name FROM users WHERE id=$1", id).Scan(&name); err != nil {
-		c.String(404, "Пользователь не найден")
+		respondMessage(c, 404, "Пользователь не найден")
 		return
 	}
 	_, err = tx.Exec(c.Request.Context(), "DELETE FROM sessions WHERE user_id=$1", id)
@@ -382,7 +382,7 @@ func (app *application) revokeUserSessions(c *gin.Context) {
 		err = tx.Commit(c.Request.Context())
 	}
 	if err != nil {
-		c.String(500, "Не удалось завершить сессии")
+		respondMessage(c, 500, "Не удалось завершить сессии")
 		return
 	}
 	c.Redirect(303, "/admin/users")

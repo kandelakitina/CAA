@@ -95,6 +95,9 @@
 * { box-sizing: border-box; }
 
 .account { flex-wrap: wrap; justify-content: flex-end; }
+.error-card { max-width: 42rem; margin: 3rem auto; }
+.error-symbol { display: grid; place-items: center; width: 3rem; height: 3rem; border-radius: 50%; background: var(--color-24324a); color: var(--color-fcd34d); font-size: 1.5rem; font-weight: 700; }
+.error-message { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.6; }
 .login-theme { position: absolute; top: 1rem; right: 1rem; }
 .theme-toggle {
   position: relative;

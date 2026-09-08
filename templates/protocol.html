@@ -8,10 +8,7 @@
   <link rel="stylesheet" href="/static/app.css">
 </head>
 <body>
-  <header class="topbar">
-    <div><p class="eyebrow">Neva Concert Hall</p><strong>Корпоративные согласования</strong></div>
-    <div class="account">{{ template "workspace-nav" . }}</div>
-  </header>
+  {{ template "workspace-header" . }}
   <main class="content protocol-page">
     <section class="card protocol-sheet">
       <div class="protocol-toolbar"><a class="back-link" href="/protocols">← Все протоколы</a><a class="button-link" href="/protocols/{{ .Protocol.ID }}/word">Скачать Word</a></div>

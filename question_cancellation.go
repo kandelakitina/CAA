@@ -37,22 +37,22 @@ func (app *application) cancelQuestion(c *gin.Context) {
 	}
 	reason, err := validateQuestionCancellationReason(c.PostForm("reason"))
 	if err != nil {
-		c.String(http.StatusUnprocessableEntity, err.Error())
+		respondMessage(c, http.StatusUnprocessableEntity, err.Error())
 		return
 	}
 	tx, err := app.db.Begin(c.Request.Context())
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось начать отмену вопроса")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось начать отмену вопроса")
 		return
 	}
 	err = app.cancelQuestionTransaction(c.Request.Context(), tx, c.MustGet("user").(user), questionID, reason)
 	switch {
 	case errors.Is(err, pgx.ErrNoRows):
-		c.String(http.StatusNotFound, "Вопрос не найден")
+		respondMessage(c, http.StatusNotFound, "Вопрос не найден")
 	case errors.Is(err, errQuestionCannotCancel):
-		c.String(http.StatusConflict, err.Error())
+		respondMessage(c, http.StatusConflict, err.Error())
 	case err != nil:
-		c.String(http.StatusInternalServerError, "Не удалось отменить вопрос")
+		respondMessage(c, http.StatusInternalServerError, "Не удалось отменить вопрос")
 	default:
 		c.Redirect(http.StatusSeeOther, fmt.Sprintf("/questions/%d", questionID))
 	}
