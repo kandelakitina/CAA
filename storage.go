@@ -49,8 +49,7 @@ func newStorage(ctx context.Context) (*storage, error) {
 
 func (app *application) checkStorage(c *gin.Context) {
 	if app.storage == nil {
-		c.Header("Content-Type", "text/html; charset=utf-8")
-		respondMessage(c, http.StatusServiceUnavailable, `<span class="storage-status storage-status--error">S3 не настроен. Проверьте переменные приложения.</span>`)
+		c.JSON(http.StatusServiceUnavailable, gin.H{"message": "S3 не настроен. Проверьте переменные приложения."})
 		return
 	}
 
@@ -61,11 +60,9 @@ func (app *application) checkStorage(c *gin.Context) {
 		Bucket: &app.storage.bucket,
 	})
 	if err != nil {
-		c.Header("Content-Type", "text/html; charset=utf-8")
-		respondMessage(c, http.StatusBadGateway, `<span class="storage-status storage-status--error">Нет доступа к S3. Проверьте endpoint, бакет и ключи.</span>`)
+		c.JSON(http.StatusBadGateway, gin.H{"message": "Нет доступа к S3. Проверьте endpoint, бакет и ключи."})
 		return
 	}
 
-	c.Header("Content-Type", "text/html; charset=utf-8")
-	respondMessage(c, http.StatusOK, `<span class="storage-status storage-status--ok">S3 подключён. Приватный бакет доступен приложению.</span>`)
+	c.JSON(http.StatusOK, gin.H{"message": "S3 подключён. Приватный бакет доступен приложению."})
 }

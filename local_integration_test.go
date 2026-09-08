@@ -422,12 +422,11 @@ func TestLocalIntegration(t *testing.T) {
 		t.Fatal("report bypassed Committee visibility")
 	}
 	admin.request("GET", "/reports/statuses?status=approved", nil, nil, 200)
-	_, legacy := admin.request("POST", "/documents", url.Values{"title": {"Legacy test"}}, [][]byte{pdf}, 303)
-	var legacyID int64
-	if err := db.QueryRow(ctx, "SELECT id FROM documents ORDER BY id DESC LIMIT 1").Scan(&legacyID); err != nil {
-		t.Fatal(err)
-	}
-	legacy = fmt.Sprintf("/documents/%d", legacyID)
+	admin.request("POST", "/documents", nil, nil, 404)
+	admin.request("GET", "/documents/1", nil, nil, 404)
+	admin.request("GET", "/storage/check", nil, nil, 404)
+	admin.request("GET", "/admin/storage/check", nil, nil, 200)
+	users["observer"].request("GET", "/admin/storage/check", nil, nil, 403)
 	preview := func(action, id string) url.Values {
 		html, _ := admin.request("POST", "/admin/maintenance/preview", url.Values{"action": {action}, "target_id": {id}}, nil, 200)
 		match := regexp.MustCompile(`name="confirmation_token" value="([^"]+)"`).FindStringSubmatch(html)
@@ -449,8 +448,6 @@ func TestLocalIntegration(t *testing.T) {
 		t.Fatal("archived material remained in active report")
 	}
 	admin.request("GET", "/reports/statuses?archive=1", nil, nil, 200)
-	admin.request("POST", "/admin/maintenance/execute", preview("archive_document", strings.TrimPrefix(legacy, "/documents/")), nil, 303)
-	admin.request("POST", legacy+"/versions", nil, [][]byte{pdf}, 409)
 	staleReset := preview("reset", "0")
 	admin.request("POST", "/questions", url.Values{"question_type": {"other"}, "title": {"Created after preview"}, "decision_text": {"Test"}, "internal_deadline": {deadline}}, nil, 303)
 	admin.request("POST", "/admin/maintenance/execute", staleReset, nil, 409)

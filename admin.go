@@ -77,7 +77,7 @@ func (app *application) adminDashboard(c *gin.Context) {
 		return
 	}
 	rows, err := app.db.Query(c.Request.Context(), `SELECT id,'question',title,status,archived_at IS NOT NULL FROM questions
-		UNION ALL SELECT id,'document',title,status,archived_at IS NOT NULL FROM documents ORDER BY 1 DESC LIMIT 200`)
+		ORDER BY id DESC LIMIT 200`)
 	if err != nil {
 		respondMessage(c, 500, "Не удалось загрузить материалы")
 		return

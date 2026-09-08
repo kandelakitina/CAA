@@ -70,11 +70,6 @@ func (app *application) renderDashboard(c *gin.Context, status int, message stri
 
 func (app *application) renderDashboardWithQuestion(c *gin.Context, status int, message string, values questionInput) {
 	usr := c.MustGet("user").(user)
-	documents, err := app.listDocuments(c.Request.Context())
-	if err != nil {
-		respondMessage(c, http.StatusInternalServerError, "Не удалось загрузить реестр документов")
-		return
-	}
 	questions, err := app.listQuestions(c, usr)
 	if err != nil {
 		respondMessage(c, http.StatusInternalServerError, "Не удалось загрузить реестр вопросов")
@@ -86,7 +81,6 @@ func (app *application) renderDashboardWithQuestion(c *gin.Context, status int, 
 		"User":      usr,
 		"CSRFToken": app.templateCSRF(c),
 		"Questions": questions,
-		"Documents": documents,
 		"Question":  values,
 		"Error":     message,
 	})

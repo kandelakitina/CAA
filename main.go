@@ -156,16 +156,7 @@ func (app *application) routes() *gin.Engine {
 	router.GET("/protocols/:id", app.requireUser(), app.showProtocol)
 	router.GET("/protocols/:id/word", app.requireUser(), app.downloadProtocolWord)
 	router.POST("/protocols/:id/delete", app.requireUser(), app.requireCSRF(), app.requireRole("admin", "secretary"), app.deleteProtocol)
-	router.GET("/storage/check", app.requireUser(), app.checkStorage)
-	router.POST("/documents", app.requireUser(), app.requireCSRF(), app.createDocument)
-	router.GET("/documents/:id", app.requireUser(), app.showDocument)
-	router.POST("/documents/:id/versions", app.requireUser(), app.requireCSRF(), app.createDocumentVersion)
-	router.GET("/documents/:id/download", app.requireUser(), app.downloadCurrentDocument)
-	router.GET("/documents/:id/versions/:version/download", app.requireUser(), app.downloadDocumentVersion)
-	router.POST("/documents/:id/approval/start", app.requireUser(), app.requireCSRF(), app.requireRole("admin", "secretary"), app.startApproval)
-	router.POST("/documents/:id/approval/respond", app.requireUser(), app.requireCSRF(), app.respondToApproval)
-	router.POST("/documents/:id/approval/complete", app.requireUser(), app.requireCSRF(), app.requireRole("admin", "secretary"), app.completeApproval)
-	router.POST("/documents/:id/approval/cancel", app.requireUser(), app.requireCSRF(), app.requireRole("admin", "secretary"), app.cancelApproval)
+	router.GET("/admin/storage/check", app.requireUser(), app.requireRole("admin"), app.checkStorage)
 
 	return router
 }
