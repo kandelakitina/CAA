@@ -206,14 +206,14 @@ func (app *application) showQuestion(c *gin.Context) {
 
 	var detail questionDetail
 	var questionType, subtype, status, amount string
-	var deadline, createdAt time.Time
+	var deadline, createdAt, updatedAt time.Time
 	var cancelledAt *time.Time
 	var hasReviewHistory bool
 	err = app.db.QueryRow(c.Request.Context(), `
 		SELECT q.id, q.title, q.question_type, COALESCE(q.transaction_subtype, ''),
 		       q.summary, q.decision_text, q.internal_deadline, q.counterparty,
 		       COALESCE(q.amount::TEXT, ''), q.currency, q.status,
-		       u.full_name, q.created_at, q.cancellation_reason, q.cancelled_at, q.cancelled_by_name,
+		       u.full_name, q.created_at, q.cancellation_reason, q.cancelled_at, q.cancelled_by_name, q.updated_at,
 		       EXISTS (SELECT 1 FROM internal_review_rounds WHERE question_id = q.id)
 		       OR EXISTS (SELECT 1 FROM committee_vote_rounds WHERE question_id = q.id)
 		FROM questions q
@@ -226,6 +226,7 @@ func (app *application) showQuestion(c *gin.Context) {
 		&detail.DecisionText, &deadline, &detail.Counterparty,
 		&amount, &detail.Currency, &status, &detail.CreatedBy, &createdAt,
 		&detail.CancellationReason, &cancelledAt, &detail.CancelledBy,
+		&updatedAt,
 		&hasReviewHistory,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -276,13 +277,21 @@ func (app *application) showQuestion(c *gin.Context) {
 		c.String(http.StatusInternalServerError, "Не удалось загрузить голосование Комитета")
 		return
 	}
+	decisionRevisions, err := app.loadDecisionRevisions(c.Request.Context(), questionID)
+	if err != nil {
+		c.String(http.StatusInternalServerError, "Не удалось загрузить историю формулировки решения")
+		return
+	}
 
 	c.HTML(http.StatusOK, "question.html", gin.H{
 		"Title": detail.Title, "User": usr, "CSRFToken": app.templateCSRF(c), "Question": detail,
 		"Files": files, "CanUploadFiles": canUpload, "InternalReview": internalReview,
 		"RevisionPlan": revisionPlan, "CommitteeVote": committeeVote,
-		"CanCancelQuestion": usr.Role == "secretary" && canCancelQuestion(status),
-		"CanEditQuestion":   usr.Role == "secretary" && canEditQuestion(status, hasReviewHistory),
+		"CanCancelQuestion":    usr.Role == "secretary" && canCancelQuestion(status),
+		"CanEditQuestion":      usr.Role == "secretary" && canEditQuestion(status, hasReviewHistory),
+		"CanReviseDecision":    usr.Role == "secretary" && canReviseDecision(status, hasReviewHistory),
+		"DecisionRevisions":    decisionRevisions,
+		"QuestionContextToken": updatedAt.Format(time.RFC3339Nano),
 	})
 }
 

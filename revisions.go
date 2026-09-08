@@ -310,8 +310,8 @@ func (app *application) restartInternalReview(c *gin.Context) {
 	}
 	var roundID int64
 	err = tx.QueryRow(c.Request.Context(), `
-		INSERT INTO internal_review_rounds (question_id, deadline, started_by)
-		VALUES ($1, $2, $3) RETURNING id
+		INSERT INTO internal_review_rounds (question_id, deadline, started_by, frozen_decision_text)
+		SELECT id, $2, $3, decision_text FROM questions WHERE id = $1 RETURNING id
 	`, questionID, deadline, usr.ID).Scan(&roundID)
 	if err != nil {
 		c.String(http.StatusInternalServerError, "Не удалось создать повторный раунд")

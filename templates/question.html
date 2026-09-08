@@ -38,6 +38,21 @@
       {{ end }}
       <section class="question-text"><h2>Формулировка решения</h2><p>{{ .Question.DecisionText }}</p></section>
       {{ if .CanEditQuestion }}<p><a class="button-link" href="/questions/{{ .Question.ID }}/edit">Редактировать черновик</a></p>{{ end }}
+      {{ if .CanReviseDecision }}<p><a class="button-link" href="/questions/{{ .Question.ID }}/decision-revisions/new">Новая редакция решения</a></p>{{ end }}
+      {{ if .DecisionRevisions }}
+      <details class="upload-panel"><summary>История редакций решения</summary>
+        {{ range .DecisionRevisions }}
+        <section class="question-text">
+          <h3>Редакция №{{ .Number }} · {{ .CreatedLabel }}</h3>
+          <p>{{ .Creator }} · {{ .PolicyLabel }}</p>
+          <p>Исходный раунд №{{ .SourceRoundID }}, новый раунд №{{ .NewRoundID }}.</p>
+          <p>Причина: {{ .Reason }}</p>
+          <details><summary>Предыдущая формулировка</summary><p>{{ .PreviousText }}</p></details>
+          <h4>Новая формулировка</h4><p>{{ .Text }}</p>
+        </section>
+        {{ end }}
+      </details>
+      {{ end }}
       {{ if .Question.Summary }}<section class="question-text"><h2>Краткое описание материалов</h2><p>{{ .Question.Summary }}</p></section>{{ end }}
       {{ if .Question.CancellationReason }}
       <section class="question-text"><h2>Вопрос отменён</h2><p>{{ .Question.CancellationReason }}</p><p>{{ .Question.CancelledBy }} · {{ .Question.CancelledLabel }}</p><p>Возобновление вопроса невозможно. Материалы и решения сохранены в истории.</p></section>
@@ -174,6 +189,9 @@
 		{{ end }}
 
 		{{ if .InternalReview.HasRound }}
+		<details class="upload-panel compact-panel"><summary>Формулировка решения этого раунда</summary>
+		  {{ if .InternalReview.DecisionText }}<p>{{ .InternalReview.DecisionText }}</p>{{ else }}<p>В старом раунде формулировка отдельно не фиксировалась.</p>{{ end }}
+		</details>
 		<div class="review-summary {{ if .InternalReview.PastDue }}review-summary--overdue{{ end }}">
 		  <span>Получено виз: <strong>{{ .InternalReview.ProgressLabel }}</strong></span>
 		  <span>Срок: <strong>{{ .InternalReview.DeadlineLabel }}</strong>{{ if .InternalReview.PastDue }} · просрочено{{ end }}</span>
@@ -204,6 +222,7 @@
 			  <strong>{{ .Visa.DecisionLabel }}</strong>
 			  <span>{{ .Visa.DecidedBy }} · {{ .Visa.DecidedLabel }}</span>
 			  {{ if .Visa.CarryLabel }}<span>{{ .Visa.CarryLabel }}</span>{{ end }}
+			  {{ if .Visa.CarryLabel }}<details><summary>Формулировка исходной визы</summary>{{ if .Visa.SourceDecisionText }}<p>{{ .Visa.SourceDecisionText }}</p>{{ else }}<p>В старом раунде формулировка отдельно не фиксировалась.</p>{{ end }}</details>{{ end }}
 			  {{ if .Visa.Comment }}<p>{{ .Visa.Comment }}</p>{{ end }}
 			  {{ if .Visa.Attachments }}<div class="visa-attachments">{{ range .Visa.Attachments }}<a class="text-link" href="/questions/{{ $.Question.ID }}/internal-review/attachments/{{ .ID }}/download">{{ .Filename }} · {{ .SizeLabel }}</a>{{ end }}</div>{{ end }}
 			  {{ if .Visa.CanWithdraw }}
@@ -254,6 +273,7 @@
 		{{ if .CommitteeVote.CanStart }}
 		<form class="form-stack review-start-form" method="post" action="/questions/{{ .Question.ID }}/committee/start">
 		  <input type="hidden" name="_csrf" value="{{ .CSRFToken }}">
+		  <input type="hidden" name="question_context" value="{{ .QuestionContextToken }}">
 		  <label>Срок голосования<input type="date" name="deadline" required value="{{ .CommitteeVote.DeadlineValue }}"></label>
 		  <button type="submit">Передать на голосование</button>
 		</form>

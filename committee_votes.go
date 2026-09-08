@@ -99,6 +99,11 @@ func calculateCommitteeOutcome(roster, responded, support int) (bool, string) {
 	return true, "rejected"
 }
 
+func committeeContextMatches(token string, updatedAt time.Time) bool {
+	expected, err := time.Parse(time.RFC3339Nano, token)
+	return err == nil && expected.Equal(updatedAt)
+}
+
 func (app *application) startCommitteeVote(c *gin.Context) {
 	usr := c.MustGet("user").(user)
 	questionID, ok := parsePositiveID(c, "id", "Некорректный идентификатор вопроса")
@@ -127,9 +132,10 @@ func (app *application) startCommitteeVote(c *gin.Context) {
 		return
 	}
 	var title, decisionText, status string
+	var updatedAt time.Time
 	err = tx.QueryRow(c.Request.Context(), `
-		SELECT title, decision_text, status FROM questions WHERE id = $1 FOR UPDATE
-	`, questionID).Scan(&title, &decisionText, &status)
+		SELECT title, decision_text, status, updated_at FROM questions WHERE id = $1 FOR UPDATE
+	`, questionID).Scan(&title, &decisionText, &status, &updatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		c.String(http.StatusNotFound, "Вопрос не найден")
 		return
@@ -140,6 +146,10 @@ func (app *application) startCommitteeVote(c *gin.Context) {
 	}
 	if status != "ready_for_committee" && status != "rejected" && status != "no_quorum" {
 		c.String(http.StatusConflict, "Вопрос пока нельзя передать на Комитет")
+		return
+	}
+	if !committeeContextMatches(c.PostForm("question_context"), updatedAt) {
+		c.String(http.StatusConflict, "Вопрос изменился. Обновите карточку и проверьте формулировку решения и комплект перед передачей на Комитет")
 		return
 	}
 	fileRows, err := tx.Query(c.Request.Context(), `

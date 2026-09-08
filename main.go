@@ -101,6 +101,8 @@ func main() {
 	router.POST("/questions", app.requireUser(), app.requireCSRF(), app.requireRole("secretary"), app.createQuestion)
 	router.GET("/questions/:id", app.requireUser(), app.showQuestion)
 	router.GET("/questions/:id/edit", app.requireUser(), app.requireRole("secretary"), app.showQuestionEdit)
+	router.GET("/questions/:id/decision-revisions/new", app.requireUser(), app.requireRole("secretary"), app.showDecisionRevision)
+	router.POST("/questions/:id/decision-revisions", app.requireUser(), app.requireCSRF(), app.requireRole("secretary"), app.createDecisionRevision)
 	router.POST("/questions/:id/edit", app.requireUser(), app.requireCSRF(), app.requireRole("secretary"), app.updateQuestion)
 	router.POST("/questions/:id/cancel", app.requireUser(), app.requireCSRF(), app.requireRole("secretary"), app.cancelQuestion)
 	router.POST("/questions/:id/files", app.requireUser(), app.requireCSRF(), app.requireQuestionFileUploader(), app.uploadQuestionFile)
@@ -370,6 +372,38 @@ func (app *application) migrate(ctx context.Context) error {
 			ON internal_review_rounds(question_id) WHERE status = 'active';
 		CREATE INDEX IF NOT EXISTS internal_review_rounds_question_idx
 			ON internal_review_rounds(question_id, started_at DESC, id DESC);
+		ALTER TABLE internal_review_rounds ADD COLUMN IF NOT EXISTS frozen_decision_text TEXT;
+
+		CREATE TABLE IF NOT EXISTS decision_text_revisions (
+			id BIGSERIAL PRIMARY KEY,
+			question_id BIGINT NOT NULL REFERENCES questions(id),
+			revision_no INTEGER NOT NULL CHECK (revision_no > 0),
+			previous_text TEXT NOT NULL,
+			decision_text TEXT NOT NULL CHECK (length(btrim(decision_text)) BETWEEN 1 AND 10000),
+			reason TEXT NOT NULL CHECK (length(btrim(reason)) BETWEEN 1 AND 2000),
+			visa_policy TEXT NOT NULL CHECK (visa_policy IN ('recheck_all', 'carry_positive')),
+			source_round_id BIGINT NOT NULL REFERENCES internal_review_rounds(id),
+			new_round_id BIGINT NOT NULL REFERENCES internal_review_rounds(id),
+			created_by BIGINT NOT NULL REFERENCES users(id),
+			creator_name TEXT NOT NULL,
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			UNIQUE (question_id, revision_no)
+		);
+		CREATE OR REPLACE FUNCTION prevent_decision_revision_changes()
+		RETURNS TRIGGER AS $$
+		BEGIN
+			RAISE EXCEPTION 'Decision text revisions are immutable';
+		END;
+		$$ LANGUAGE plpgsql;
+		DO $$
+		BEGIN
+			IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'decision_revisions_immutable'
+				AND tgrelid = 'decision_text_revisions'::regclass) THEN
+				CREATE TRIGGER decision_revisions_immutable BEFORE UPDATE OR DELETE ON decision_text_revisions
+				FOR EACH ROW EXECUTE FUNCTION prevent_decision_revision_changes();
+			END IF;
+		END;
+		$$;
 
 		CREATE TABLE IF NOT EXISTS internal_review_requirements (
 			id BIGSERIAL PRIMARY KEY,

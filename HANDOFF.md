@@ -43,14 +43,29 @@
   including cancelled rounds. Updates lock the question, check the submitted
   `updated_at` token and write old/new field values to audit in one transaction.
   Validation errors retain submitted fields. No schema/config changes for editing.
+- Post-review decision text revisions are implemented. GET
+  `/questions/:id/decision-revisions/new` and POST `/questions/:id/decision-revisions`
+  are secretary-only. No active internal/Committee round is allowed; approved,
+  cancelled and never-reviewed questions are blocked. The secretary supplies a
+  new text, reason, deadline and explicit `recheck_all` or `carry_positive` policy.
+  Only positive visas for unchanged file versions from the latest internal round
+  carry forward; rejected files require a new official version. A new internal
+  round is created atomically and auto-completes when all visas are carried.
+  History records both texts, author, reason, policy and round references.
+  Committee start checks a question timestamp token to reject stale forms.
 
 ## Recommended next session
 
-Next: design post-review editing as a separate revision workflow requiring
-explicit rules for visa carry-forward. Draft editing is complete and deliberately
-does not cover drafts returned from cancelled rounds. Then implement file
-exclusion without deleting history, with mandatory-bundle validation and stage
-restrictions.
+Next: implement file exclusion without deleting history, with mandatory-bundle
+validation and stage restrictions. Draft editing and post-review decision-text
+revisions are complete. Post-review revisions change only the decision text;
+other metadata remains protected after the first review.
+
+Decision revision migrations add immutable `decision_text_revisions` and nullable
+`internal_review_rounds.frozen_decision_text`. New initial, repeat and text-revision
+rounds save their text. Older rounds are NOT backfilled from current text; the UI
+explicitly labels the missing snapshot. Migrations use IF NOT EXISTS and a guarded
+immutable trigger. No new environment variables or dependencies.
 
 The cancellation change adds three columns with `ADD COLUMN IF NOT EXISTS`:
 `questions.cancellation_reason`, `cancelled_at`, `cancelled_by_name`. Existing

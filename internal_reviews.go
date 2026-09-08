@@ -23,6 +23,7 @@ type reviewStartFile struct {
 }
 
 type internalReviewView struct {
+	DecisionText  string
 	HasRound      bool
 	Active        bool
 	CanStart      bool
@@ -48,16 +49,17 @@ type internalReviewItem struct {
 }
 
 type internalVisaItem struct {
-	ID             int64
-	DecisionLabel  string
-	Comment        string
-	DecidedBy      string
-	DecidedLabel   string
-	Withdrawn      bool
-	WithdrawnLabel string
-	CanWithdraw    bool
-	CarryLabel     string
-	Attachments    []visaAttachmentItem
+	ID                 int64
+	DecisionLabel      string
+	Comment            string
+	DecidedBy          string
+	DecidedLabel       string
+	Withdrawn          bool
+	WithdrawnLabel     string
+	CanWithdraw        bool
+	CarryLabel         string
+	SourceDecisionText string
+	Attachments        []visaAttachmentItem
 }
 
 func (app *application) requireInternalApprover() gin.HandlerFunc {
@@ -240,8 +242,8 @@ func (app *application) startInternalReview(c *gin.Context) {
 	deadline := requestedDeadline
 	var roundID int64
 	err = tx.QueryRow(c.Request.Context(), `
-		INSERT INTO internal_review_rounds (question_id, deadline, started_by)
-		VALUES ($1, $2, $3) RETURNING id
+		INSERT INTO internal_review_rounds (question_id, deadline, started_by, frozen_decision_text)
+		SELECT id, $2, $3, decision_text FROM questions WHERE id = $1 RETURNING id
 	`, questionID, deadline, usr.ID).Scan(&roundID)
 	if err != nil {
 		c.String(http.StatusInternalServerError, "Не удалось создать раунд внутреннего согласования")
@@ -695,10 +697,10 @@ func (app *application) loadInternalReview(ctx context.Context, questionID int64
 	var status, outcome string
 	var deadline time.Time
 	err := app.db.QueryRow(ctx, `
-		SELECT id, status, COALESCE(outcome, ''), deadline
+		SELECT id, status, COALESCE(outcome, ''), deadline, COALESCE(frozen_decision_text, '')
 		FROM internal_review_rounds WHERE question_id = $1
 		ORDER BY started_at DESC, id DESC LIMIT 1
-	`, questionID).Scan(&roundID, &status, &outcome, &deadline)
+	`, questionID).Scan(&roundID, &status, &outcome, &deadline, &view.DecisionText)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return view, nil
 	}
@@ -763,12 +765,14 @@ func (app *application) loadInternalReview(ctx context.Context, questionID int64
 		SELECT v.id, v.requirement_id, v.decision, v.comment, v.decided_by, u.full_name, v.decided_at,
 		       v.withdrawn_at IS NOT NULL, COALESCE(v.withdrawn_at, 'epoch'::timestamptz),
 		       COALESCE(v.source_visa_id, 0), COALESCE(carrier.full_name, ''),
-		       COALESCE(v.carried_at, 'epoch'::timestamptz), COALESCE(source_requirement.version_no, 0)
+		       COALESCE(v.carried_at, 'epoch'::timestamptz), COALESCE(source_requirement.version_no, 0),
+		       COALESCE(source_requirement.round_id, 0), COALESCE(source_round.frozen_decision_text, '')
 		FROM internal_review_visas v JOIN users u ON u.id = v.decided_by
 		JOIN internal_review_requirements r ON r.id = v.requirement_id
 		LEFT JOIN users carrier ON carrier.id = v.carried_by
 		LEFT JOIN internal_review_visas source_visa ON source_visa.id = v.source_visa_id
 		LEFT JOIN internal_review_requirements source_requirement ON source_requirement.id = source_visa.requirement_id
+		LEFT JOIN internal_review_rounds source_round ON source_round.id = source_requirement.round_id
 		WHERE r.round_id = $1 ORDER BY v.decided_at DESC, v.id DESC
 	`, roundID)
 	if err != nil {
@@ -779,13 +783,15 @@ func (app *application) loadInternalReview(ctx context.Context, questionID int64
 		var requirementID int64
 		var decidedByID int64
 		var sourceVisaID int64
+		var sourceRoundID int64
 		var sourceVersion int
 		var carrierName string
 		var decision string
 		var decidedAt, withdrawnAt, carriedAt time.Time
 		var visa internalVisaItem
 		if err := visaRows.Scan(&visa.ID, &requirementID, &decision, &visa.Comment, &decidedByID, &visa.DecidedBy,
-			&decidedAt, &visa.Withdrawn, &withdrawnAt, &sourceVisaID, &carrierName, &carriedAt, &sourceVersion); err != nil {
+			&decidedAt, &visa.Withdrawn, &withdrawnAt, &sourceVisaID, &carrierName, &carriedAt, &sourceVersion,
+			&sourceRoundID, &visa.SourceDecisionText); err != nil {
 			return internalReviewView{}, err
 		}
 		index, ok := indexes[requirementID]
@@ -796,7 +802,7 @@ func (app *application) loadInternalReview(ctx context.Context, questionID int64
 		visa.DecidedLabel = decidedAt.Format("02.01.2006 15:04")
 		visa.Attachments = attachmentsByVisa[visa.ID]
 		if sourceVisaID > 0 {
-			visa.CarryLabel = fmt.Sprintf("Исходная версия %d · перенос выполнил: %s · %s", sourceVersion, carrierName, carriedAt.Format("02.01.2006 15:04"))
+			visa.CarryLabel = fmt.Sprintf("Исходная версия %d · исходный раунд №%d · перенос выполнил: %s · %s", sourceVersion, sourceRoundID, carrierName, carriedAt.Format("02.01.2006 15:04"))
 		}
 		if visa.Withdrawn {
 			visa.WithdrawnLabel = withdrawnAt.Format("02.01.2006 15:04")

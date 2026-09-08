@@ -207,6 +207,7 @@ func auditEventLabel(eventType string) string {
 		"user.assignment_updated":         "Обновлено назначение пользователя",
 		"question.created":                "Создан вопрос",
 		"question.updated":                "Изменён черновик вопроса",
+		"question.decision_revised":       "Создана редакция решения",
 		"question.cancelled":              "Отменён вопрос",
 		"question.file_version_uploaded":  "Загружена версия файла вопроса",
 		"question.file_version_confirmed": "Подтверждена версия файла вопроса",

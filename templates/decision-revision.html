@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ .Title }}</title>
+  <link rel="stylesheet" href="/static/app.css">
+
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <p class="eyebrow">Neva Concert Hall</p>
+      <strong>Корпоративные согласования</strong>
+    </div>
+    <div class="account">
+	  <a class="nav-link" href="/protocols">Протоколы</a>
+      {{ if eq .User.Role "admin" }}<a class="nav-link" href="/admin/users">Пользователи</a><a class="nav-link" href="/admin/audit">Аудит</a>{{ end }}
+      <a class="nav-link" href="/password/change">Пароль</a>
+      <span>{{ .User.FullName }}</span>
+      <span class="role">{{ .User.Role }}</span>
+      <form method="post" action="/logout"><input type="hidden" name="_csrf" value="{{ .CSRFToken }}"><button type="submit" class="button-secondary">Выйти</button></form>
+    </div>
+  </header>
+
+  <main class="content">
+    <section class="card dashboard-card">
+      <a class="back-link" href="/questions/{{ .QuestionID }}">← Вернуться к вопросу</a>
+      <h1>Новая редакция решения</h1>
+      <p>Сохранятся прежний текст, причина изменения и решение о переносе виз. Будет создан новый внутренний раунд для текущего комплекта.</p>
+      {{ if .Error }}<div class="alert" role="alert">{{ .Error }} <a href="/questions/{{ .QuestionID }}/decision-revisions/new">Открыть актуальную форму</a></div>{{ end }}
+      <form class="form-stack" method="post" action="/questions/{{ .QuestionID }}/decision-revisions">
+        <input type="hidden" name="_csrf" value="{{ .CSRFToken }}">
+        <input type="hidden" name="edit_token" value="{{ .Input.Token }}">
+        <label>Новая формулировка решения<textarea name="decision_text" rows="8" maxlength="10000" required>{{ .Input.Text }}</textarea></label>
+        <label>Причина изменения<textarea name="reason" rows="3" maxlength="2000" required>{{ .Input.Reason }}</textarea></label>
+        <label>Как поступить с прежними визами
+          <select name="visa_policy" required>
+            <option value="">Выберите действие</option>
+            <option value="recheck_all" {{ if eq .Input.Policy "recheck_all" }}selected{{ end }}>Запросить все визы заново</option>
+            <option value="carry_positive" {{ if eq .Input.Policy "carry_positive" }}selected{{ end }}>Перенести положительные визы по неизменившимся файлам</option>
+          </select>
+        </label>
+        <p class="form-hint">Перенос означает, что прежняя виза учитывается для новой формулировки по вашему решению, без повторной проверки службой. Если перенесены все обязательные визы, вопрос сразу станет готов к Комитету. Для изменившихся файлов и отсутствующих виз потребуется новое согласование.</p>
+        <p class="form-hint">Несогласованные файлы сначала нужно доработать и подтвердить. Все ожидающие загрузки должны быть подтверждены или отклонены.</p>
+        <label>Срок нового внутреннего раунда<input type="date" name="deadline" required value="{{ .Input.Deadline }}"></label>
+        <button type="submit">Сохранить редакцию и создать раунд</button>
+      </form>
+    </section>
+  </main>
+</body>
+</html>
