@@ -50,6 +50,34 @@ type internalReviewItem struct {
 	History       []internalVisaItem
 }
 
+type internalReviewFileGroup struct {
+	FileID    int64
+	FileTitle string
+	VersionNo int
+	Items     []internalReviewItem
+}
+
+// Group by identity and reviewed version, never by a potentially duplicate title.
+func (view internalReviewView) FileGroups() []internalReviewFileGroup {
+	type fileVersion struct {
+		id      int64
+		version int
+	}
+	indexes := make(map[fileVersion]int)
+	var groups []internalReviewFileGroup
+	for _, item := range view.Items {
+		key := fileVersion{item.FileID, item.VersionNo}
+		index, exists := indexes[key]
+		if !exists {
+			index = len(groups)
+			indexes[key] = index
+			groups = append(groups, internalReviewFileGroup{FileID: item.FileID, FileTitle: item.FileTitle, VersionNo: item.VersionNo})
+		}
+		groups[index].Items = append(groups[index].Items, item)
+	}
+	return groups
+}
+
 type internalVisaItem struct {
 	ID                 int64
 	DecisionLabel      string

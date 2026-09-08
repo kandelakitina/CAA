@@ -230,10 +230,14 @@
 		  </form>
 		</div>
 		{{ end }}
-		<div class="review-grid">
-		  {{ range .InternalReview.Items }}
-		  <article class="review-item">
-			<div class="review-item-heading"><div><strong>{{ .FileTitle }}</strong><span>Версия {{ .VersionNo }}</span></div><span class="service-badge">{{ .ServiceLabel }}</span></div>
+		<div class="review-document-list">
+		  {{ range .InternalReview.FileGroups }}
+		  <section class="review-document">
+			<div class="review-document-heading"><h3>{{ .FileTitle }}</h3><span>Версия {{ .VersionNo }}</span></div>
+			{{ range .Items }}
+		  <article class="review-service-row">
+			<div class="review-service-name"><span class="service-badge">{{ .ServiceLabel }}</span></div>
+			<div class="review-service-content">
 			{{ if .FilePaused }}<p class="pending-visa">Файл приостановлен: новая версия ожидает решения секретаря.</p>{{ end }}
 			{{ if .HasVisa }}
 			<div class="visa-result">
@@ -275,7 +279,10 @@
 			  {{ range .History }}<div><strong>{{ .DecisionLabel }}</strong><span>{{ .DecidedBy }} · {{ .DecidedLabel }} · отозвана {{ .WithdrawnLabel }}</span>{{ if .Comment }}<p>{{ .Comment }}</p>{{ end }}{{ if .Attachments }}<div class="visa-attachments">{{ range .Attachments }}<a class="text-link" href="/questions/{{ $.Question.ID }}/internal-review/attachments/{{ .ID }}/download">{{ .Filename }} · {{ .SizeLabel }}</a>{{ end }}</div>{{ end }}</div>{{ end }}
 			</details>
 			{{ end }}
+			</div>
 		  </article>
+		  {{ end }}
+		  </section>
 		  {{ end }}
 		</div>
 		{{ else if not .InternalReview.CanStart }}
