@@ -58,7 +58,7 @@ func (b *localBrowser) request(method, path string, fields url.Values, files [][
 				}
 			}
 			field := "attachments"
-			if strings.Contains(path, "/files") || strings.HasPrefix(path,"/documents") {
+			if strings.Contains(path, "/files") || strings.HasPrefix(path, "/documents") {
 				field = "file"
 			}
 			for _, file := range files {
@@ -405,65 +405,106 @@ func TestLocalIntegration(t *testing.T) {
 	if auditErr == nil {
 		t.Fatal("audit update was not rejected")
 	}
-	admin.request("GET","/admin",nil,nil,200)
-	admin.request("GET","/registry",nil,nil,200)
-	users["observer"].request("GET","/admin",nil,nil,403)
-	users["observer"].request("POST","/admin/maintenance/preview",url.Values{"action":{"reset"}},nil,403)
-	_,extra:=admin.request("POST","/questions",url.Values{"question_type":{"budget"},"title":{"=INTEGRATION-REPORT"},"decision_text":{"Admin-created question"},"internal_deadline":{deadline}},nil,303)
-	admin.request("POST",extra+"/files",url.Values{"title":{"Admin file"},"category":{"other"}},[][]byte{pdf},303)
-	admin.request("POST",extra+"/internal-review/start",url.Values{"deadline":{deadline}},nil,303)
-	admin.request("POST",extra+"/internal-review/cancel",nil,nil,303)
-	report,_:=admin.request("GET","/reports/statuses.csv?q=INTEGRATION-REPORT",nil,nil,200)
-	if !strings.Contains(report,"'=INTEGRATION-REPORT") {t.Fatal("CSV formula not neutralized")}
-	hiddenReport,_:=users["chair"].request("GET","/reports/statuses.csv?q=INTEGRATION-REPORT",nil,nil,200)
-	if strings.Contains(hiddenReport,"=INTEGRATION-REPORT") {t.Fatal("report bypassed Committee visibility")}
-	admin.request("GET","/reports/statuses?status=approved",nil,nil,200)
-	_,legacy:=admin.request("POST","/documents",url.Values{"title":{"Legacy test"}},[][]byte{pdf},303)
-	var legacyID int64
-	if err:=db.QueryRow(ctx,"SELECT id FROM documents ORDER BY id DESC LIMIT 1").Scan(&legacyID);err!=nil {t.Fatal(err)}
-	legacy=fmt.Sprintf("/documents/%d",legacyID)
-	preview:=func(action,id string) url.Values {
-		html,_:=admin.request("POST","/admin/maintenance/preview",url.Values{"action":{action},"target_id":{id}},nil,200)
-		match:=regexp.MustCompile(`name="confirmation_token" value="([^"]+)"`).FindStringSubmatch(html)
-		if len(match)!=2 {t.Fatal("missing maintenance preview token")}
-		_,phrase,_:=maintenanceAction(action)
-		return url.Values{"action":{action},"target_id":{id},"confirmation_token":{match[1]},"confirmation":{phrase},"password":{password},"reason":{"Isolated integration test"}}
+	admin.request("GET", "/admin", nil, nil, 200)
+	admin.request("GET", "/registry", nil, nil, 200)
+	users["observer"].request("GET", "/admin", nil, nil, 403)
+	users["observer"].request("POST", "/admin/maintenance/preview", url.Values{"action": {"reset"}}, nil, 403)
+	_, extra := admin.request("POST", "/questions", url.Values{"question_type": {"budget"}, "title": {"=INTEGRATION-REPORT"}, "decision_text": {"Admin-created question"}, "internal_deadline": {deadline}}, nil, 303)
+	admin.request("POST", extra+"/files", url.Values{"title": {"Admin file"}, "category": {"other"}}, [][]byte{pdf}, 303)
+	admin.request("POST", extra+"/internal-review/start", url.Values{"deadline": {deadline}}, nil, 303)
+	admin.request("POST", extra+"/internal-review/cancel", nil, nil, 303)
+	report, _ := admin.request("GET", "/reports/statuses.csv?q=INTEGRATION-REPORT", nil, nil, 200)
+	if !strings.Contains(report, "'=INTEGRATION-REPORT") {
+		t.Fatal("CSV formula not neutralized")
 	}
-	individual:=preview("archive_question",strings.TrimPrefix(extra,"/questions/"))
-	individual.Set("password","wrong")
-	admin.request("POST","/admin/maintenance/execute",individual,nil,403)
-	individual.Set("password",password)
-	admin.request("POST","/admin/maintenance/execute",individual,nil,303)
-	admin.request("GET",extra,nil,nil,200)
-	admin.request("POST",extra+"/internal-review/start",url.Values{"deadline":{deadline}},nil,409)
-	archivedReport,_:=admin.request("GET","/reports/statuses.csv?q=INTEGRATION-REPORT",nil,nil,200)
-	if strings.Contains(archivedReport,"=INTEGRATION-REPORT") {t.Fatal("archived material remained in active report")}
-	admin.request("GET","/reports/statuses?archive=1",nil,nil,200)
-	admin.request("POST","/admin/maintenance/execute",preview("archive_document",strings.TrimPrefix(legacy,"/documents/")),nil,303)
-	admin.request("POST",legacy+"/versions",nil,[][]byte{pdf},409)
-	staleReset:=preview("reset","0")
-	admin.request("POST","/questions",url.Values{"question_type":{"other"},"title":{"Created after preview"},"decision_text":{"Test"},"internal_deadline":{deadline}},nil,303)
-	admin.request("POST","/admin/maintenance/execute",staleReset,nil,409)
-	admin.request("POST","/admin/maintenance/execute",preview("archive_all","0"),nil,303)
-	users["observer"].request("GET",question,nil,nil,303)
+	hiddenReport, _ := users["chair"].request("GET", "/reports/statuses.csv?q=INTEGRATION-REPORT", nil, nil, 200)
+	if strings.Contains(hiddenReport, "=INTEGRATION-REPORT") {
+		t.Fatal("report bypassed Committee visibility")
+	}
+	admin.request("GET", "/reports/statuses?status=approved", nil, nil, 200)
+	_, legacy := admin.request("POST", "/documents", url.Values{"title": {"Legacy test"}}, [][]byte{pdf}, 303)
+	var legacyID int64
+	if err := db.QueryRow(ctx, "SELECT id FROM documents ORDER BY id DESC LIMIT 1").Scan(&legacyID); err != nil {
+		t.Fatal(err)
+	}
+	legacy = fmt.Sprintf("/documents/%d", legacyID)
+	preview := func(action, id string) url.Values {
+		html, _ := admin.request("POST", "/admin/maintenance/preview", url.Values{"action": {action}, "target_id": {id}}, nil, 200)
+		match := regexp.MustCompile(`name="confirmation_token" value="([^"]+)"`).FindStringSubmatch(html)
+		if len(match) != 2 {
+			t.Fatal("missing maintenance preview token")
+		}
+		_, phrase, _ := maintenanceAction(action)
+		return url.Values{"action": {action}, "target_id": {id}, "confirmation_token": {match[1]}, "confirmation": {phrase}, "password": {password}, "reason": {"Isolated integration test"}}
+	}
+	individual := preview("archive_question", strings.TrimPrefix(extra, "/questions/"))
+	individual.Set("password", "wrong")
+	admin.request("POST", "/admin/maintenance/execute", individual, nil, 403)
+	individual.Set("password", password)
+	admin.request("POST", "/admin/maintenance/execute", individual, nil, 303)
+	admin.request("GET", extra, nil, nil, 200)
+	admin.request("POST", extra+"/internal-review/start", url.Values{"deadline": {deadline}}, nil, 409)
+	archivedReport, _ := admin.request("GET", "/reports/statuses.csv?q=INTEGRATION-REPORT", nil, nil, 200)
+	if strings.Contains(archivedReport, "=INTEGRATION-REPORT") {
+		t.Fatal("archived material remained in active report")
+	}
+	admin.request("GET", "/reports/statuses?archive=1", nil, nil, 200)
+	admin.request("POST", "/admin/maintenance/execute", preview("archive_document", strings.TrimPrefix(legacy, "/documents/")), nil, 303)
+	admin.request("POST", legacy+"/versions", nil, [][]byte{pdf}, 409)
+	staleReset := preview("reset", "0")
+	admin.request("POST", "/questions", url.Values{"question_type": {"other"}, "title": {"Created after preview"}, "decision_text": {"Test"}, "internal_deadline": {deadline}}, nil, 303)
+	admin.request("POST", "/admin/maintenance/execute", staleReset, nil, 409)
+	admin.request("POST", "/admin/maintenance/execute", preview("archive_all", "0"), nil, 303)
+	users["observer"].request("GET", question, nil, nil, 303)
 	var observerID int64
-	if err:=db.QueryRow(ctx,"SELECT id FROM users WHERE role='observer'").Scan(&observerID);err!=nil {t.Fatal(err)}
-	admin.request("POST",fmt.Sprintf("/admin/users/%d/restore",observerID),nil,nil,303)
-	admin.request("POST",fmt.Sprintf("/admin/users/%d/revoke-sessions",observerID),nil,nil,303)
+	if err := db.QueryRow(ctx, "SELECT id FROM users WHERE role='observer'").Scan(&observerID); err != nil {
+		t.Fatal(err)
+	}
+	admin.request("POST", fmt.Sprintf("/admin/users/%d/restore", observerID), nil, nil, 303)
+	admin.request("POST", fmt.Sprintf("/admin/users/%d/revoke-sessions", observerID), nil, nil, 303)
 	// Re-running migrations must also work when archived rows already exist.
-	if err:=app.migrate(ctx);err!=nil {t.Fatal(err)}
-	reset:=preview("reset","0")
-	reset.Set("confirmation","wrong")
-	admin.request("POST","/admin/maintenance/execute",reset,nil,422)
-	reset.Set("confirmation","УДАЛИТЬ ВСЁ")
-	admin.request("POST","/admin/maintenance/execute",reset,nil,303)
-	var questionsLeft,usersLeft,auditLeft,cleanupLeft int
-	if err:=db.QueryRow(ctx,`SELECT (SELECT COUNT(*) FROM questions),(SELECT COUNT(*) FROM users),(SELECT COUNT(*) FROM audit_events),(SELECT COUNT(*) FROM storage_cleanup WHERE completed_at IS NULL)`).Scan(&questionsLeft,&usersLeft,&auditLeft,&cleanupLeft);err!=nil {t.Fatal(err)}
-	if questionsLeft!=0 || usersLeft!=1 || auditLeft!=1 || cleanupLeft==0 {t.Fatalf("reset invariant failed: q=%d users=%d audit=%d cleanup=%d",questionsLeft,usersLeft,auditLeft,cleanupLeft)}
-	admin.request("GET","/admin",nil,nil,200)
-	admin.request("POST","/admin/storage/retry",nil,nil,303)
-	if err:=db.QueryRow(ctx,"SELECT COUNT(*) FROM storage_cleanup WHERE completed_at IS NULL").Scan(&cleanupLeft);err!=nil {t.Fatal(err)}
-	if cleanupLeft!=0 {t.Fatal("S3 cleanup did not finish")}
-	if _,err:=app.storage.client.HeadObject(ctx,&s3.HeadObjectInput{Bucket:&app.storage.bucket,Key:&objectKey});err==nil {t.Fatal("reset object still exists in S3")}
+	if err := app.migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	reset := preview("reset", "0")
+	reset.Set("confirmation", "wrong")
+	admin.request("POST", "/admin/maintenance/execute", reset, nil, 422)
+	reset.Set("confirmation", "УДАЛИТЬ ВСЁ")
+	admin.request("POST", "/admin/maintenance/execute", reset, nil, 303)
+	var questionsLeft, usersLeft, auditLeft, cleanupLeft int
+	if err := db.QueryRow(ctx, `SELECT (SELECT COUNT(*) FROM questions),(SELECT COUNT(*) FROM users),(SELECT COUNT(*) FROM audit_events),(SELECT COUNT(*) FROM storage_cleanup WHERE completed_at IS NULL)`).Scan(&questionsLeft, &usersLeft, &auditLeft, &cleanupLeft); err != nil {
+		t.Fatal(err)
+	}
+	if questionsLeft != 0 || usersLeft != 1 || auditLeft != 1 || cleanupLeft == 0 {
+		t.Fatalf("reset invariant failed: q=%d users=%d audit=%d cleanup=%d", questionsLeft, usersLeft, auditLeft, cleanupLeft)
+	}
+	admin.request("GET", "/admin", nil, nil, 200)
+	// A failed S3 deletion must remain queued and succeed after recovery.
+	unavailable := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusServiceUnavailable) }))
+	defer unavailable.Close()
+	workingClient := app.storage.client
+	failedOptions := workingClient.Options()
+	failedOptions.BaseEndpoint = &unavailable.URL
+	failedOptions.RetryMaxAttempts = 1
+	app.storage.client = s3.New(failedOptions)
+	app.processStorageCleanup(ctx)
+	app.storage.client = workingClient
+	var pendingAfterFailure, attemptsAfterFailure int
+	if err := db.QueryRow(ctx, "SELECT COUNT(*),COALESCE(SUM(attempts),0) FROM storage_cleanup WHERE completed_at IS NULL").Scan(&pendingAfterFailure, &attemptsAfterFailure); err != nil {
+		t.Fatal(err)
+	}
+	if pendingAfterFailure != cleanupLeft || attemptsAfterFailure < 1 {
+		t.Fatal("failed S3 cleanup lost queued work")
+	}
+	admin.request("POST", "/admin/storage/retry", nil, nil, 303)
+	if err := db.QueryRow(ctx, "SELECT COUNT(*) FROM storage_cleanup WHERE completed_at IS NULL").Scan(&cleanupLeft); err != nil {
+		t.Fatal(err)
+	}
+	if cleanupLeft != 0 {
+		t.Fatal("S3 cleanup did not finish")
+	}
+	if _, err := app.storage.client.HeadObject(ctx, &s3.HeadObjectInput{Bucket: &app.storage.bucket, Key: &objectKey}); err == nil {
+		t.Fatal("reset object still exists in S3")
+	}
 	t.Log("Passed real PostgreSQL/S3 workflow, migrations, login/passwords, access checks, immutable downloads, rework, visa carry, Committee cancellation, protocol and history.")
 }

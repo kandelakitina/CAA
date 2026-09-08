@@ -308,7 +308,7 @@ func TestDecisionRevisionRolesAndCSRF(t *testing.T) {
 			get := httptest.NewRecorder()
 			router.ServeHTTP(get, httptest.NewRequest(http.MethodGet, "/questions/invalid/decision-revisions/new", nil))
 			wantGet := 403
-			if (role == "secretary" || role == "admin") {
+			if role == "secretary" || role == "admin" {
 				wantGet = 400
 			}
 			if get.Code != wantGet {

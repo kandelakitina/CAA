@@ -198,12 +198,12 @@ func parseAuditFilters(c *gin.Context) (auditFilters, error) {
 
 func auditEventLabel(eventType string) string {
 	labels := map[string]string{
-		"admin.reset": "Полный сброс данных",
-		"admin.archive_all": "Материалы архивированы, доступ пользователей отключён",
-		"admin.archive_question": "Вопрос помещён в архив",
-		"admin.archive_document": "Документ помещён в архив",
-		"user.restored": "Восстановлен доступ пользователя",
-		"user.sessions_revoked": "Завершены сессии пользователя",
+		"admin.reset":                     "Полный сброс данных",
+		"admin.archive_all":               "Материалы архивированы, доступ пользователей отключён",
+		"admin.archive_question":          "Вопрос помещён в архив",
+		"admin.archive_document":          "Документ помещён в архив",
+		"user.restored":                   "Восстановлен доступ пользователя",
+		"user.sessions_revoked":           "Завершены сессии пользователя",
 		"session.login":                   "Вход в систему",
 		"session.logout":                  "Выход из системы",
 		"user.created":                    "Создан пользователь",

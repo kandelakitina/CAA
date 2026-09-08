@@ -294,7 +294,7 @@ func (app *application) showQuestion(c *gin.Context) {
 	c.HTML(http.StatusOK, "question.html", gin.H{
 		"Title": detail.Title, "User": usr, "CSRFToken": app.templateCSRF(c), "Question": detail,
 		"Archived": c.GetBool("archived"),
-		"Files": files, "CanUploadFiles": canUpload, "InternalReview": internalReview,
+		"Files":    files, "CanUploadFiles": canUpload, "InternalReview": internalReview,
 		"RevisionPlan": revisionPlan, "CommitteeVote": committeeVote,
 		"CanCancelQuestion":    canManageQuestions(usr) && canCancelQuestion(status),
 		"CanEditQuestion":      canManageQuestions(usr) && canEditQuestion(status, hasReviewHistory),

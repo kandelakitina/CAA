@@ -663,7 +663,9 @@ func (app *application) migrate(ctx context.Context) error {
 		$$;
 	`
 	_, err := app.db.Exec(ctx, schema)
-	if err != nil { return err }
+	if err != nil {
+		return err
+	}
 	return app.migrateManagement(ctx)
 }
 
@@ -829,7 +831,10 @@ func (app *application) logout(c *gin.Context) {
 }
 
 func (app *application) dashboard(c *gin.Context) {
-	if c.MustGet("user").(user).Role == "admin" { c.Redirect(http.StatusSeeOther, "/admin"); return }
+	if c.MustGet("user").(user).Role == "admin" {
+		c.Redirect(http.StatusSeeOther, "/admin")
+		return
+	}
 	app.renderDashboard(c, http.StatusOK, "")
 }
 
@@ -844,14 +849,24 @@ func (app *application) requireUser() gin.HandlerFunc {
 		c.Set("user", usr)
 		if strings.HasPrefix(c.FullPath(), "/questions/:id") || strings.HasPrefix(c.FullPath(), "/documents/:id") {
 			table := "questions"
-			if strings.HasPrefix(c.FullPath(), "/documents/") { table = "documents" }
-			id, parseErr := strconv.ParseInt(c.Param("id"),10,64)
+			if strings.HasPrefix(c.FullPath(), "/documents/") {
+				table = "documents"
+			}
+			id, parseErr := strconv.ParseInt(c.Param("id"), 10, 64)
 			if parseErr == nil {
 				var archived bool
-				err := app.db.QueryRow(c.Request.Context(),"SELECT archived_at IS NOT NULL FROM "+table+" WHERE id=$1",id).Scan(&archived)
-				if err != nil && !errors.Is(err,pgx.ErrNoRows) {c.String(500,"Не удалось проверить архив");c.Abort();return}
-				c.Set("archived",archived)
-				if archived && c.Request.Method != http.MethodGet {c.String(409,"Архивный материал доступен только для просмотра");c.Abort();return}
+				err := app.db.QueryRow(c.Request.Context(), "SELECT archived_at IS NOT NULL FROM "+table+" WHERE id=$1", id).Scan(&archived)
+				if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+					c.String(500, "Не удалось проверить архив")
+					c.Abort()
+					return
+				}
+				c.Set("archived", archived)
+				if archived && c.Request.Method != http.MethodGet {
+					c.String(409, "Архивный материал доступен только для просмотра")
+					c.Abort()
+					return
+				}
 			}
 		}
 		if usr.MustChangePassword && c.Request.URL.Path != "/password/change" && c.Request.URL.Path != "/logout" {

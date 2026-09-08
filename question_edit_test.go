@@ -132,7 +132,7 @@ func TestQuestionEditHTTP(t *testing.T) {
 			get := httptest.NewRecorder()
 			router.ServeHTTP(get, httptest.NewRequest(http.MethodGet, "/questions/invalid/edit", nil))
 			wantGet := http.StatusForbidden
-			if (role == "secretary" || role == "admin") {
+			if role == "secretary" || role == "admin" {
 				wantGet = http.StatusBadRequest
 			}
 			if get.Code != wantGet {

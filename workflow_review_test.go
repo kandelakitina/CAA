@@ -59,7 +59,7 @@ func TestRevisionPlanAfterCommitteeRework(t *testing.T) {
 		if err != nil || !plan.Ready || tx.sourceRound != 10 || len(plan.Files) != 1 {
 			t.Fatalf("plan=%+v source=%d err=%v", plan, tx.sourceRound, err)
 		}
-		if plan.CanRestart != ((role == "secretary" || role == "admin")) {
+		if plan.CanRestart != (role == "secretary" || role == "admin") {
 			t.Fatal("only the secretary may restart")
 		}
 		for _, service := range plan.Files[0].Services {

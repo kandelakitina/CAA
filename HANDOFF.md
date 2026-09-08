@@ -20,6 +20,29 @@
 
 ## Current implementation
 
+Update 2026-09-08: light/dark theme with persisted top-menu toggle; `/admin`
+dashboard; administrator management of questions/rounds/protocols; user restore
+and session revocation; `/reports/statuses` and filtered CSV (5000-row ceiling,
+role-scoped, spreadsheet formula protection).
+
+The owner explicitly requested BOTH archival and permanent reset. These are
+implemented, not executed on production. Individual archive preserves history;
+bulk archive also disables everyone except the current administrator. Full reset
+requires preview, current administrator password, reason, and exact phrase;
+a changed database snapshot rejects the confirmation. It removes domain records,
+other users and old audit, retaining the current administrator and a reset event.
+No automatic backup. S3 deletion is queued transactionally in `storage_cleanup`
+and retried every minute; matching endpoint/bucket configuration is required.
+Archived roots are read-only, enforced by middleware and database triggers.
+No archive restoration for materials; user access can be restored separately.
+
+Additive migrations add archived_at columns, guarded triggers and cleanup table.
+No new production dependencies or environment variables. Tests passed against
+local PG/S3, including stale preview, wrong credentials/phrase, forbidden role,
+archive, user restore, reset, failed S3 deletion and successful retry. Light/dark
+screens and theme persistence were checked on a read-only browser fixture.
+Timeweb deployment and production smoke tests remain separate authorized work.
+
 - Go/Gin, server-rendered templates, PostgreSQL/pgx and private S3-compatible
   storage.
 - Existing security work includes CSRF protection, login rate limiting and
@@ -133,8 +156,8 @@ sandbox approval. Build to the OS temporary directory on Windows.
 ## Deferred topics
 
 - Email notifications and reminders need a separate requirements session.
-- Production cleanup of obsolete documents and users was discussed but
-  explicitly deferred; do not delete production data.
+- Production execution of archive/reset remains unauthorized; implementation
+  was explicitly requested, but do not delete production data during development.
 - Protocol generation is an auxiliary convenience, not the legal archive;
   signed paper scans remain outside the application.
 
