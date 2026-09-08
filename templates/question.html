@@ -229,6 +229,102 @@
 		<div class="empty-state"><strong>Внутреннее согласование ещё не запускалось</strong></div>
 		{{ end }}
 	  </section>
+
+	  <section class="committee-section">
+		<div class="section-heading">
+		  <div><p class="eyebrow">Коллегиальное решение</p><h2>Голосование Комитета</h2></div>
+		  {{ if .CommitteeVote.HasRound }}<span class="status-pill">{{ .CommitteeVote.StatusLabel }}</span>{{ end }}
+		</div>
+		{{ if .CommitteeVote.CanStart }}
+		<form class="form-stack review-start-form" method="post" action="/questions/{{ .Question.ID }}/committee/start">
+		  <input type="hidden" name="_csrf" value="{{ .CSRFToken }}">
+		  <label>Срок голосования<input type="date" name="deadline" required value="{{ .CommitteeVote.DeadlineValue }}"></label>
+		  <button type="submit">Передать на голосование</button>
+		</form>
+		<p class="form-hint">При запуске фиксируются формулировка решения, версии файлов и действующий состав Комитета.</p>
+		{{ end }}
+
+		{{ if .CommitteeVote.HasRound }}
+		<div class="review-summary {{ if .CommitteeVote.PastDue }}review-summary--overdue{{ end }}">
+		  <span>Проголосовали: <strong>{{ .CommitteeVote.ProgressLabel }}</strong></span>
+		  <span><strong>{{ .CommitteeVote.QuorumLabel }}</strong></span>
+		  <span>Срок: <strong>{{ .CommitteeVote.DeadlineLabel }}</strong>{{ if .CommitteeVote.PastDue }} · истёк{{ end }}</span>
+		</div>
+		<div class="question-text frozen-decision"><h3>Формулировка, вынесенная на голосование</h3><p>{{ .CommitteeVote.DecisionText }}</p></div>
+		<div class="frozen-bundle">
+		  <strong>Зафиксированный комплект</strong>
+		  {{ range .CommitteeVote.Files }}
+		  <a class="text-link" href="/questions/{{ $.Question.ID }}/files/{{ .ID }}/versions/{{ .VersionNo }}/download">{{ .Title }} · версия {{ .VersionNo }}</a>
+		  {{ end }}
+		</div>
+
+		{{ if .CommitteeVote.CanManage }}
+		<div class="review-management">
+		  <details class="upload-panel compact-panel"><summary>Продлить срок</summary>
+			<form class="form-stack" method="post" action="/questions/{{ .Question.ID }}/committee/extend">
+			  <input type="hidden" name="_csrf" value="{{ .CSRFToken }}">
+			  <label>Новый срок<input type="date" name="deadline" required></label>
+			  <label>Причина<textarea name="reason" rows="2" maxlength="2000" required></textarea></label>
+			  <button type="submit">Продлить</button>
+			</form>
+		  </details>
+		  {{ if .CommitteeVote.CanClose }}
+		  <form method="post" action="/questions/{{ .Question.ID }}/committee/close">
+			<input type="hidden" name="_csrf" value="{{ .CSRFToken }}">
+			<button type="submit">Закрыть и подсчитать результат</button>
+		  </form>
+		  {{ end }}
+		  <form method="post" action="/questions/{{ .Question.ID }}/committee/cancel">
+			<input type="hidden" name="_csrf" value="{{ .CSRFToken }}">
+			<button type="submit" class="button-danger">Отменить голосование</button>
+		  </form>
+		</div>
+		{{ end }}
+
+		{{ if .CommitteeVote.CanVote }}
+		<form class="form-stack committee-vote-form" method="post" action="/questions/{{ .Question.ID }}/committee/vote" enctype="multipart/form-data">
+		  <h3>Ваш голос</h3>
+		  <input type="hidden" name="_csrf" value="{{ .CSRFToken }}">
+		  <label>Решение
+			<select name="decision" required>
+			  <option value="">Выберите решение</option>
+			  <option value="for">За</option>
+			  <option value="for_with_comments">За с замечаниями</option>
+			  <option value="against">Против</option>
+			  <option value="abstain">Воздержался</option>
+			</select>
+		  </label>
+		  <label>Комментарий<textarea name="comment" rows="3" maxlength="5000"></textarea></label>
+		  <label>Привязать комментарий
+			<select name="target_file_id"><option value="">К вопросу в целом</option>{{ range .CommitteeVote.Files }}<option value="{{ .ID }}">{{ .Title }} · версия {{ .VersionNo }}</option>{{ end }}</select>
+		  </label>
+		  <label>Вложения — до 10 файлов по 25 МБ<input type="file" name="attachments" accept=".doc,.docx,.xls,.xlsx,.pdf" multiple></label>
+		  <p class="form-hint">Комментарий обязателен для всех вариантов, кроме «За».</p>
+		  <button type="submit">Отправить голос</button>
+		</form>
+		{{ end }}
+
+		<div class="committee-roster">
+		  {{ range .CommitteeVote.Participants }}
+		  <article class="committee-member">
+			<div class="review-item-heading"><strong>{{ .Name }}</strong>{{ if .IsChair }}<span class="service-badge">Председатель</span>{{ end }}</div>
+			{{ if .HasVote }}
+			<div class="visa-result">
+			  <strong>{{ .Vote.Decision }}</strong><span>{{ .Vote.VotedLabel }}</span>
+			  {{ if .Vote.TargetLabel }}<span>К файлу: {{ .Vote.TargetLabel }}</span>{{ end }}
+			  {{ if .Vote.Comment }}<p>{{ .Vote.Comment }}</p>{{ end }}
+			  {{ if .Vote.Attachments }}<div class="visa-attachments">{{ range .Vote.Attachments }}<a class="text-link" href="/questions/{{ $.Question.ID }}/committee/attachments/{{ .ID }}/download">{{ .Filename }} · {{ .SizeLabel }}</a>{{ end }}</div>{{ end }}
+			  {{ if .Vote.CanWithdraw }}<form method="post" action="/questions/{{ $.Question.ID }}/committee/votes/{{ .Vote.ID }}/withdraw"><input type="hidden" name="_csrf" value="{{ $.CSRFToken }}"><button type="submit" class="button-secondary">Отозвать голос</button></form>{{ end }}
+			</div>
+			{{ else }}<p class="pending-visa">Ожидается голос</p>{{ end }}
+			{{ if .History }}<details class="visa-history"><summary>Отозванные голоса: {{ len .History }}</summary>{{ range .History }}<div><strong>{{ .Decision }}</strong><span>{{ .VotedLabel }}</span>{{ if .TargetLabel }}<span>К файлу: {{ .TargetLabel }}</span>{{ end }}{{ if .Comment }}<p>{{ .Comment }}</p>{{ end }}{{ if .Attachments }}<div class="visa-attachments">{{ range .Attachments }}<a class="text-link" href="/questions/{{ $.Question.ID }}/committee/attachments/{{ .ID }}/download">{{ .Filename }} · {{ .SizeLabel }}</a>{{ end }}</div>{{ end }}</div>{{ end }}</details>{{ end }}
+		  </article>
+		  {{ end }}
+		</div>
+		{{ else if not .CommitteeVote.CanStart }}
+		<div class="empty-state"><strong>Голосование Комитета ещё не запускалось</strong></div>
+		{{ end }}
+	  </section>
     </section>
   </main>
 </body>

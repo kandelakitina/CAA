@@ -112,6 +112,13 @@ func main() {
 	router.POST("/questions/:id/internal-review/cancel", app.requireUser(), app.requireCSRF(), app.requireRole("secretary"), app.cancelInternalReview)
 	router.POST("/questions/:id/internal-review/restart", app.requireUser(), app.requireCSRF(), app.requireRole("secretary"), app.restartInternalReview)
 	router.GET("/questions/:id/internal-review/attachments/:attachmentID/download", app.requireUser(), app.downloadInternalVisaAttachment)
+	router.POST("/questions/:id/committee/start", app.requireUser(), app.requireCSRF(), app.requireRole("secretary"), app.startCommitteeVote)
+	router.POST("/questions/:id/committee/vote", app.requireUser(), app.requireCSRF(), app.requireRole("committee"), app.submitCommitteeVote)
+	router.POST("/questions/:id/committee/votes/:voteID/withdraw", app.requireUser(), app.requireCSRF(), app.requireRole("committee"), app.withdrawCommitteeVote)
+	router.POST("/questions/:id/committee/extend", app.requireUser(), app.requireCSRF(), app.requireRole("secretary"), app.extendCommitteeVote)
+	router.POST("/questions/:id/committee/close", app.requireUser(), app.requireCSRF(), app.requireRole("secretary"), app.closeCommitteeVote)
+	router.POST("/questions/:id/committee/cancel", app.requireUser(), app.requireCSRF(), app.requireRole("secretary"), app.cancelCommitteeVote)
+	router.GET("/questions/:id/committee/attachments/:attachmentID/download", app.requireUser(), app.downloadCommitteeVoteAttachment)
 	router.GET("/storage/check", app.requireUser(), app.checkStorage)
 	router.POST("/documents", app.requireUser(), app.requireCSRF(), app.createDocument)
 	router.GET("/documents/:id", app.requireUser(), app.showDocument)
@@ -420,6 +427,90 @@ func (app *application) migrate(ctx context.Context) error {
 
 		CREATE INDEX IF NOT EXISTS internal_visa_attachments_visa_idx
 			ON internal_visa_attachments(visa_id, id);
+
+		CREATE TABLE IF NOT EXISTS committee_vote_rounds (
+			id BIGSERIAL PRIMARY KEY,
+			question_id BIGINT NOT NULL REFERENCES questions(id),
+			status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'completed', 'cancelled')),
+			deadline DATE NOT NULL,
+			outcome TEXT CHECK (outcome IS NULL OR outcome IN ('approved', 'rejected', 'no_quorum')),
+			frozen_decision_text TEXT NOT NULL CHECK (length(btrim(frozen_decision_text)) > 0),
+			roster_size INTEGER NOT NULL CHECK (roster_size > 0),
+			started_by BIGINT NOT NULL REFERENCES users(id),
+			started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			completed_at TIMESTAMPTZ,
+			cancelled_at TIMESTAMPTZ,
+			CHECK (
+				(status = 'active' AND outcome IS NULL AND completed_at IS NULL AND cancelled_at IS NULL)
+				OR (status = 'completed' AND outcome IS NOT NULL AND completed_at IS NOT NULL AND cancelled_at IS NULL)
+				OR (status = 'cancelled' AND outcome IS NULL AND completed_at IS NULL AND cancelled_at IS NOT NULL)
+			)
+		);
+
+		CREATE UNIQUE INDEX IF NOT EXISTS committee_vote_rounds_one_active_idx
+			ON committee_vote_rounds(question_id) WHERE status = 'active';
+		CREATE INDEX IF NOT EXISTS committee_vote_rounds_question_idx
+			ON committee_vote_rounds(question_id, started_at DESC, id DESC);
+
+		CREATE TABLE IF NOT EXISTS committee_vote_round_files (
+			round_id BIGINT NOT NULL REFERENCES committee_vote_rounds(id),
+			question_file_id BIGINT NOT NULL,
+			version_no INTEGER NOT NULL,
+			PRIMARY KEY (round_id, question_file_id),
+			FOREIGN KEY (question_file_id, version_no)
+				REFERENCES question_file_versions(question_file_id, version_no)
+		);
+
+		CREATE TABLE IF NOT EXISTS committee_vote_participants (
+			id BIGSERIAL PRIMARY KEY,
+			round_id BIGINT NOT NULL REFERENCES committee_vote_rounds(id),
+			user_id BIGINT NOT NULL REFERENCES users(id),
+			name_snapshot TEXT NOT NULL,
+			email_snapshot TEXT NOT NULL,
+			is_chair_snapshot BOOLEAN NOT NULL DEFAULT FALSE,
+			status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'voted')),
+			UNIQUE (round_id, user_id)
+		);
+
+		CREATE INDEX IF NOT EXISTS committee_vote_participants_round_idx
+			ON committee_vote_participants(round_id, id);
+		CREATE INDEX IF NOT EXISTS committee_vote_participants_user_idx
+			ON committee_vote_participants(user_id, round_id);
+
+		CREATE TABLE IF NOT EXISTS committee_votes (
+			id BIGSERIAL PRIMARY KEY,
+			participant_id BIGINT NOT NULL REFERENCES committee_vote_participants(id),
+			decision TEXT NOT NULL CHECK (decision IN ('for', 'for_with_comments', 'against', 'abstain')),
+			comment TEXT NOT NULL DEFAULT '',
+			target_question_file_id BIGINT REFERENCES question_files(id),
+			target_version_no INTEGER,
+			voted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			withdrawn_at TIMESTAMPTZ,
+			CHECK (decision = 'for' OR length(btrim(comment)) > 0),
+			CHECK ((target_question_file_id IS NULL) = (target_version_no IS NULL)),
+			FOREIGN KEY (target_question_file_id, target_version_no)
+				REFERENCES question_file_versions(question_file_id, version_no)
+		);
+
+		CREATE UNIQUE INDEX IF NOT EXISTS committee_votes_one_active_idx
+			ON committee_votes(participant_id) WHERE withdrawn_at IS NULL;
+		CREATE INDEX IF NOT EXISTS committee_votes_participant_idx
+			ON committee_votes(participant_id, voted_at DESC, id DESC);
+
+		CREATE TABLE IF NOT EXISTS committee_vote_attachments (
+			id BIGSERIAL PRIMARY KEY,
+			vote_id BIGINT NOT NULL REFERENCES committee_votes(id),
+			object_key TEXT NOT NULL UNIQUE,
+			s3_version_id TEXT,
+			original_filename TEXT NOT NULL,
+			content_type TEXT NOT NULL,
+			size_bytes BIGINT NOT NULL CHECK (size_bytes > 0),
+			uploaded_by BIGINT NOT NULL REFERENCES users(id),
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		);
+
+		CREATE INDEX IF NOT EXISTS committee_vote_attachments_vote_idx
+			ON committee_vote_attachments(vote_id, id);
 
 		CREATE TABLE IF NOT EXISTS audit_events (
 			id BIGSERIAL PRIMARY KEY,

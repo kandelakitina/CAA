@@ -46,6 +46,12 @@
 			<option value="internal_review.completed" {{ if eq .Filters.EventType "internal_review.completed" }}selected{{ end }}>Завершение внутреннего согласования</option>
 			<option value="internal_review.cancelled" {{ if eq .Filters.EventType "internal_review.cancelled" }}selected{{ end }}>Отмена внутреннего согласования</option>
 			<option value="internal_review.restarted" {{ if eq .Filters.EventType "internal_review.restarted" }}selected{{ end }}>Повторное внутреннее согласование</option>
+			<option value="committee_vote.started" {{ if eq .Filters.EventType "committee_vote.started" }}selected{{ end }}>Запуск голосования Комитета</option>
+			<option value="committee_vote.submitted" {{ if eq .Filters.EventType "committee_vote.submitted" }}selected{{ end }}>Голос Комитета</option>
+			<option value="committee_vote.withdrawn" {{ if eq .Filters.EventType "committee_vote.withdrawn" }}selected{{ end }}>Отзыв голоса Комитета</option>
+			<option value="committee_vote.extended" {{ if eq .Filters.EventType "committee_vote.extended" }}selected{{ end }}>Продление голосования Комитета</option>
+			<option value="committee_vote.completed" {{ if eq .Filters.EventType "committee_vote.completed" }}selected{{ end }}>Завершение голосования Комитета</option>
+			<option value="committee_vote.cancelled" {{ if eq .Filters.EventType "committee_vote.cancelled" }}selected{{ end }}>Отмена голосования Комитета</option>
             <option value="document.created" {{ if eq .Filters.EventType "document.created" }}selected{{ end }}>Создание документа</option>
             <option value="document.version_uploaded" {{ if eq .Filters.EventType "document.version_uploaded" }}selected{{ end }}>Новая версия</option>
             <option value="approval.started" {{ if eq .Filters.EventType "approval.started" }}selected{{ end }}>Запуск согласования</option>

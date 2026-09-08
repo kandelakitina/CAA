@@ -239,7 +239,7 @@ func (app *application) showQuestion(c *gin.Context) {
 		return
 	}
 	canUpload := canUploadQuestionFiles(usr)
-	canUpload = canUpload && (status == "draft" || status == "internal_review" || status == "revision_required")
+	canUpload = canUpload && (status == "draft" || status == "internal_review" || status == "revision_required" || status == "rejected" || status == "no_quorum")
 	internalReview, err := app.loadInternalReview(c.Request.Context(), questionID, status, usr)
 	if err != nil {
 		c.String(http.StatusInternalServerError, "Не удалось загрузить внутреннее согласование")
@@ -250,11 +250,16 @@ func (app *application) showQuestion(c *gin.Context) {
 		c.String(http.StatusInternalServerError, "Не удалось подготовить повторное согласование")
 		return
 	}
+	committeeVote, err := app.loadCommitteeVote(c.Request.Context(), questionID, status, usr)
+	if err != nil {
+		c.String(http.StatusInternalServerError, "Не удалось загрузить голосование Комитета")
+		return
+	}
 
 	c.HTML(http.StatusOK, "question.html", gin.H{
 		"Title": detail.Title, "User": usr, "CSRFToken": app.templateCSRF(c), "Question": detail,
 		"Files": files, "CanUploadFiles": canUpload, "InternalReview": internalReview,
-		"RevisionPlan": revisionPlan,
+		"RevisionPlan": revisionPlan, "CommitteeVote": committeeVote,
 	})
 }
 

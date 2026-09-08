@@ -323,7 +323,7 @@ func (app *application) saveQuestionFileVersion(c *gin.Context, fileID int64) {
 		c.String(http.StatusInternalServerError, "Не удалось загрузить вопрос")
 		return
 	}
-	if questionStatus != "draft" && questionStatus != "internal_review" && questionStatus != "revision_required" {
+	if questionStatus != "draft" && questionStatus != "internal_review" && questionStatus != "revision_required" && questionStatus != "rejected" && questionStatus != "no_quorum" {
 		c.String(http.StatusConflict, "На текущем этапе комплект вопроса изменять нельзя")
 		return
 	}
@@ -416,7 +416,11 @@ func (app *application) saveQuestionFileVersion(c *gin.Context, fileID int64) {
 		err = replaceActiveInternalReviewFileVersion(ctx, tx, questionID, fileID, nextVersion)
 	}
 	if err == nil {
-		_, err = tx.Exec(ctx, `UPDATE questions SET updated_at = NOW() WHERE id = $1`, questionID)
+		newQuestionStatus := questionStatus
+		if questionStatus == "rejected" || questionStatus == "no_quorum" {
+			newQuestionStatus = "revision_required"
+		}
+		_, err = tx.Exec(ctx, `UPDATE questions SET status = $2, updated_at = NOW() WHERE id = $1`, questionID, newQuestionStatus)
 	}
 	if err == nil {
 		details := fmt.Sprintf("Файл «%s», версия %d", title, nextVersion)
