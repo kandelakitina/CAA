@@ -37,6 +37,7 @@
       </div>
       {{ end }}
       <section class="question-text"><h2>Формулировка решения</h2><p>{{ .Question.DecisionText }}</p></section>
+      {{ if .CanEditQuestion }}<p><a class="button-link" href="/questions/{{ .Question.ID }}/edit">Редактировать черновик</a></p>{{ end }}
       {{ if .Question.Summary }}<section class="question-text"><h2>Краткое описание материалов</h2><p>{{ .Question.Summary }}</p></section>{{ end }}
       {{ if .Question.CancellationReason }}
       <section class="question-text"><h2>Вопрос отменён</h2><p>{{ .Question.CancellationReason }}</p><p>{{ .Question.CancelledBy }} · {{ .Question.CancelledLabel }}</p><p>Возобновление вопроса невозможно. Материалы и решения сохранены в истории.</p></section>

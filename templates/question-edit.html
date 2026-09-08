@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ .Title }}</title>
+  <link rel="stylesheet" href="/static/app.css">
+
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <p class="eyebrow">Neva Concert Hall</p>
+      <strong>Корпоративные согласования</strong>
+    </div>
+    <div class="account">
+	  <a class="nav-link" href="/protocols">Протоколы</a>
+      {{ if eq .User.Role "admin" }}<a class="nav-link" href="/admin/users">Пользователи</a><a class="nav-link" href="/admin/audit">Аудит</a>{{ end }}
+      <a class="nav-link" href="/password/change">Пароль</a>
+      <span>{{ .User.FullName }}</span>
+      <span class="role">{{ .User.Role }}</span>
+      <form method="post" action="/logout"><input type="hidden" name="_csrf" value="{{ .CSRFToken }}"><button type="submit" class="button-secondary">Выйти</button></form>
+    </div>
+  </header>
+
+  <main class="content">
+    <section class="card dashboard-card">
+      <a class="back-link" href="/questions/{{ .QuestionID }}">← Вернуться к вопросу</a>
+      <h1>Редактирование черновика</h1>
+      <p>Реквизиты можно менять до первого запуска согласования. При изменении типа вопроса требования к комплекту будут проверены перед запуском.</p>
+      {{ if .Error }}<div class="alert" role="alert">{{ .Error }} <a href="/questions/{{ .QuestionID }}/edit">Открыть актуальную форму</a></div>{{ end }}
+      <form class="form-stack upload-form" method="post" action="/questions/{{ .QuestionID }}/edit">
+        <input type="hidden" name="_csrf" value="{{ .CSRFToken }}">
+        <input type="hidden" name="edit_token" value="{{ .EditToken }}">
+		  <label>
+			Тип вопроса
+			<select name="question_type" required>
+			  <option value="">Выберите тип</option>
+			  <option value="budget" {{ if eq .Input.QuestionType "budget" }}selected{{ end }}>Бюджет</option>
+			  <option value="internal_document" {{ if eq .Input.QuestionType "internal_document" }}selected{{ end }}>Внутренний документ / ЛНА</option>
+			  <option value="transaction" {{ if eq .Input.QuestionType "transaction" }}selected{{ end }}>Сделка / договор</option>
+			  <option value="kpi" {{ if eq .Input.QuestionType "kpi" }}selected{{ end }}>КПЭ</option>
+			  <option value="board_other" {{ if eq .Input.QuestionType "board_other" }}selected{{ end }}>Иной вопрос компетенции Совета директоров</option>
+			  <option value="organizational" {{ if eq .Input.QuestionType "organizational" }}selected{{ end }}>Организационный вопрос</option>
+			  <option value="other" {{ if eq .Input.QuestionType "other" }}selected{{ end }}>Другое</option>
+			</select>
+		  </label>
+		  <label>Короткое название<input name="title" maxlength="250" required value="{{ .Input.Title }}"></label>
+		  <label>Формулировка решения<textarea name="decision_text" rows="5" maxlength="10000" required>{{ .Input.DecisionText }}</textarea></label>
+		  <label>Краткое описание материалов — необязательно<textarea name="summary" rows="3" maxlength="5000">{{ .Input.Summary }}</textarea></label>
+		  <label>Срок внутреннего согласования<input type="date" name="internal_deadline" required value="{{ .Input.InternalDeadline }}"></label>
+		  <fieldset class="question-contract-fields">
+			<legend>Только для сделки или договора</legend>
+			<label>Подтип
+			  <select name="transaction_subtype">
+				<option value="">Не применяется</option>
+				<option value="purchase" {{ if eq .Input.TransactionType "purchase" }}selected{{ end }}>Закупочный</option>
+				<option value="financial" {{ if eq .Input.TransactionType "financial" }}selected{{ end }}>Финансовый</option>
+			  </select>
+			</label>
+			<label>Контрагент<input name="counterparty" maxlength="500" value="{{ .Input.Counterparty }}"></label>
+			<div class="question-money-fields">
+			  <label>Сумма<input name="amount" inputmode="decimal" placeholder="1000000.00" value="{{ .Input.Amount }}"></label>
+			  <label>Валюта<input name="currency" maxlength="3" placeholder="RUB" value="{{ .Input.Currency }}"></label>
+			</div>
+		  </fieldset>
+        <button type="submit">Сохранить изменения</button>
+      </form>
+    </section>
+  </main>
+</body>
+</html>

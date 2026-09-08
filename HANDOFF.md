@@ -38,13 +38,19 @@
   already cancelled questions cannot be cancelled. Committee readers retain
   access only if the cancelled question had reached Committee voting.
 - The legacy single-document workflow remains for compatibility.
+- Draft editing is implemented at GET/POST `/questions/:id/edit`, secretary only.
+  It is allowed only in draft with no internal or Committee round history,
+  including cancelled rounds. Updates lock the question, check the submitted
+  `updated_at` token and write old/new field values to audit in one transaction.
+  Validation errors retain submitted fields. No schema/config changes for editing.
 
 ## Recommended next session
 
-Next: implement editing question details and decision text in draft. Treat
-editing after internal review starts as a separate revision workflow requiring
-explicit rules for visa carry-forward. Then implement file exclusion without
-deleting history, with mandatory-bundle validation and stage restrictions.
+Next: design post-review editing as a separate revision workflow requiring
+explicit rules for visa carry-forward. Draft editing is complete and deliberately
+does not cover drafts returned from cancelled rounds. Then implement file
+exclusion without deleting history, with mandatory-bundle validation and stage
+restrictions.
 
 The cancellation change adds three columns with `ADD COLUMN IF NOT EXISTS`:
 `questions.cancellation_reason`, `cancelled_at`, `cancelled_by_name`. Existing

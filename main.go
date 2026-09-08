@@ -100,6 +100,8 @@ func main() {
 	router.GET("/", app.requireUser(), app.dashboard)
 	router.POST("/questions", app.requireUser(), app.requireCSRF(), app.requireRole("secretary"), app.createQuestion)
 	router.GET("/questions/:id", app.requireUser(), app.showQuestion)
+	router.GET("/questions/:id/edit", app.requireUser(), app.requireRole("secretary"), app.showQuestionEdit)
+	router.POST("/questions/:id/edit", app.requireUser(), app.requireCSRF(), app.requireRole("secretary"), app.updateQuestion)
 	router.POST("/questions/:id/cancel", app.requireUser(), app.requireCSRF(), app.requireRole("secretary"), app.cancelQuestion)
 	router.POST("/questions/:id/files", app.requireUser(), app.requireCSRF(), app.requireQuestionFileUploader(), app.uploadQuestionFile)
 	router.POST("/questions/:id/files/:fileID/versions", app.requireUser(), app.requireCSRF(), app.requireQuestionFileUploader(), app.uploadQuestionFileVersion)

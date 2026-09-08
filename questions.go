@@ -208,11 +208,14 @@ func (app *application) showQuestion(c *gin.Context) {
 	var questionType, subtype, status, amount string
 	var deadline, createdAt time.Time
 	var cancelledAt *time.Time
+	var hasReviewHistory bool
 	err = app.db.QueryRow(c.Request.Context(), `
 		SELECT q.id, q.title, q.question_type, COALESCE(q.transaction_subtype, ''),
 		       q.summary, q.decision_text, q.internal_deadline, q.counterparty,
 		       COALESCE(q.amount::TEXT, ''), q.currency, q.status,
-		       u.full_name, q.created_at, q.cancellation_reason, q.cancelled_at, q.cancelled_by_name
+		       u.full_name, q.created_at, q.cancellation_reason, q.cancelled_at, q.cancelled_by_name,
+		       EXISTS (SELECT 1 FROM internal_review_rounds WHERE question_id = q.id)
+		       OR EXISTS (SELECT 1 FROM committee_vote_rounds WHERE question_id = q.id)
 		FROM questions q
 		JOIN users u ON u.id = q.created_by
 		WHERE q.id = $1
@@ -223,6 +226,7 @@ func (app *application) showQuestion(c *gin.Context) {
 		&detail.DecisionText, &deadline, &detail.Counterparty,
 		&amount, &detail.Currency, &status, &detail.CreatedBy, &createdAt,
 		&detail.CancellationReason, &cancelledAt, &detail.CancelledBy,
+		&hasReviewHistory,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
 		c.String(http.StatusNotFound, "Вопрос не найден")
@@ -278,6 +282,7 @@ func (app *application) showQuestion(c *gin.Context) {
 		"Files": files, "CanUploadFiles": canUpload, "InternalReview": internalReview,
 		"RevisionPlan": revisionPlan, "CommitteeVote": committeeVote,
 		"CanCancelQuestion": usr.Role == "secretary" && canCancelQuestion(status),
+		"CanEditQuestion":   usr.Role == "secretary" && canEditQuestion(status, hasReviewHistory),
 	})
 }
 
