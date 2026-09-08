@@ -49,14 +49,15 @@ type committeeParticipantView struct {
 }
 
 type committeeVoteItem struct {
-	ID          int64
-	Decision    string
-	Comment     string
-	TargetLabel string
-	VotedLabel  string
-	Withdrawn   bool
-	CanWithdraw bool
-	Attachments []committeeAttachmentItem
+	ID             int64
+	Decision       string
+	Comment        string
+	TargetLabel    string
+	VotedLabel     string
+	WithdrawnLabel string
+	Withdrawn      bool
+	CanWithdraw    bool
+	Attachments    []committeeAttachmentItem
 }
 
 func validCommitteeDecision(value string) bool {
@@ -661,6 +662,10 @@ func (app *application) cancelCommitteeVote(c *gin.Context) {
 }
 
 func (app *application) loadCommitteeVote(ctx context.Context, questionID int64, questionStatus string, usr user) (committeeVoteView, error) {
+	return loadCommitteeVoteRound(ctx, app.db, questionID, questionStatus, usr, 0)
+}
+
+func loadCommitteeVoteRound(ctx context.Context, db roundHistoryDB, questionID int64, questionStatus string, usr user, selectedRoundID int64) (committeeVoteView, error) {
 	view := committeeVoteView{
 		CanStart:      usr.Role == "secretary" && (questionStatus == "ready_for_committee" || questionStatus == "rejected" || questionStatus == "no_quorum"),
 		DeadlineValue: time.Now().AddDate(0, 0, 7).Format("2006-01-02"),
@@ -669,12 +674,15 @@ func (app *application) loadCommitteeVote(ctx context.Context, questionID int64,
 	var status, outcome string
 	var deadline time.Time
 	var roster int
-	err := app.db.QueryRow(ctx, `
+	err := db.QueryRow(ctx, `
 		SELECT id, status, COALESCE(outcome, ''), frozen_decision_text, deadline, roster_size
-		FROM committee_vote_rounds WHERE question_id = $1
+		FROM committee_vote_rounds WHERE question_id = $1 AND ($2::BIGINT = 0 OR id = $2)
 		ORDER BY started_at DESC, id DESC LIMIT 1
-	`, questionID).Scan(&roundID, &status, &outcome, &view.DecisionText, &deadline, &roster)
+	`, questionID, selectedRoundID).Scan(&roundID, &status, &outcome, &view.DecisionText, &deadline, &roster)
 	if errors.Is(err, pgx.ErrNoRows) {
+		if selectedRoundID > 0 {
+			return view, pgx.ErrNoRows
+		}
 		return view, nil
 	}
 	if err != nil {
@@ -696,7 +704,7 @@ func (app *application) loadCommitteeVote(ctx context.Context, questionID int64,
 	default:
 		view.StatusLabel = questionStatusLabel(outcome)
 	}
-	fileRows, err := app.db.Query(ctx, `
+	fileRows, err := db.Query(ctx, `
 		SELECT frozen.question_file_id, file.title, frozen.version_no
 		FROM committee_vote_round_files frozen
 		JOIN question_files file ON file.id = frozen.question_file_id
@@ -718,17 +726,17 @@ func (app *application) loadCommitteeVote(ctx context.Context, questionID int64,
 		return committeeVoteView{}, err
 	}
 	fileRows.Close()
-	attachments, err := loadCommitteeAttachmentViews(ctx, app.db, roundID)
+	attachments, err := loadCommitteeAttachmentViews(ctx, db, roundID)
 	if err != nil {
 		return committeeVoteView{}, err
 	}
-	rows, err := app.db.Query(ctx, `
+	rows, err := db.Query(ctx, `
 		SELECT participant.id, participant.user_id, participant.name_snapshot,
 		       participant.is_chair_snapshot, participant.status,
 		       COALESCE(vote.id, 0), COALESCE(vote.decision, ''), COALESCE(vote.comment, ''),
 		       COALESCE(file.title || ' · версия ' || vote.target_version_no::TEXT, ''),
 		       COALESCE(vote.voted_at, 'epoch'::timestamptz),
-		       vote.withdrawn_at IS NOT NULL
+		       vote.withdrawn_at IS NOT NULL, COALESCE(vote.withdrawn_at, 'epoch'::timestamptz)
 		FROM committee_vote_participants participant
 		LEFT JOIN committee_votes vote ON vote.participant_id = participant.id
 		LEFT JOIN question_files file ON file.id = vote.target_question_file_id
@@ -746,9 +754,9 @@ func (app *application) loadCommitteeVote(ctx context.Context, questionID int64,
 		var participantID, participantUserID, voteID int64
 		var name, participantStatus, decision, comment, targetLabel string
 		var isChair, withdrawn bool
-		var votedAt time.Time
+		var votedAt, withdrawnAt time.Time
 		if err := rows.Scan(&participantID, &participantUserID, &name, &isChair, &participantStatus,
-			&voteID, &decision, &comment, &targetLabel, &votedAt, &withdrawn); err != nil {
+			&voteID, &decision, &comment, &targetLabel, &votedAt, &withdrawn, &withdrawnAt); err != nil {
 			return committeeVoteView{}, err
 		}
 		index, exists := indexes[participantID]
@@ -774,6 +782,7 @@ func (app *application) loadCommitteeVote(ctx context.Context, questionID int64,
 			Withdrawn: withdrawn, Attachments: attachments[voteID],
 		}
 		if withdrawn {
+			vote.WithdrawnLabel = withdrawnAt.Format("02.01.2006 15:04")
 			view.Participants[index].History = append(view.Participants[index].History, vote)
 			continue
 		}
@@ -790,6 +799,9 @@ func (app *application) loadCommitteeVote(ctx context.Context, questionID int64,
 		view.QuorumLabel = "Кворум набран"
 	} else {
 		view.QuorumLabel = "Кворума пока нет"
+	}
+	if selectedRoundID > 0 {
+		view = readOnlyCommitteeVote(view)
 	}
 	return view, rows.Err()
 }

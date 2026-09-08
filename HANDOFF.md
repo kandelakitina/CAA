@@ -63,13 +63,23 @@
   revisions cannot carry visas from a round predating file exclusion.
   Excluded files/versions remain visible and downloadable; no new uploads or
   confirmation/rejection is allowed. There is no restore action yet.
+- Full round history is implemented: the card lists all internal/Committee rounds
+  and GET `/questions/:id/rounds/:kind/:roundID` opens a read-only detail page.
+  Question authorization runs before any history read, and round queries require
+  both question ID and round ID. Missing/foreign IDs return 404 without fallback.
+  History includes superseded internal requirements and their old visas, precise
+  file versions, attachments and withdrawals; superseded requirements do not
+  affect final progress. Committee history uses frozen roster/bundle/text and
+  shows withdrawn vote times. Even selected active rounds have no mutation controls.
+  Current card loaders still default to the latest round. No new migrations.
 
 ## Recommended next session
 
-Next: inspect and implement browsing of all internal/Committee rounds, since the
-current card displays the latest round. Preserve authorization and frozen data.
-Then review the complete workflow against README before adding notifications,
-which still need separate requirements. Post-review revisions change only the
+Next: review the complete workflow against README and fix confirmed gaps before
+adding features. Then arrange an explicitly authorized integration check with
+real PostgreSQL/S3; no separate test environment currently exists. These are the
+two remaining verification stages after round history. Notifications remain a
+separate requirements/implementation phase. Post-review revisions change only
 decision text; other metadata remains protected after the first review.
 
 File exclusion migrations add `question_files.exclusion_reason`, `excluded_at`

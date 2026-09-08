@@ -285,6 +285,11 @@ func (app *application) showQuestion(c *gin.Context) {
 		c.String(http.StatusInternalServerError, "Не удалось загрузить историю формулировки решения")
 		return
 	}
+	rounds, err := loadRoundHistory(c.Request.Context(), app.db, questionID)
+	if err != nil {
+		c.String(http.StatusInternalServerError, "Не удалось загрузить список раундов")
+		return
+	}
 
 	c.HTML(http.StatusOK, "question.html", gin.H{
 		"Title": detail.Title, "User": usr, "CSRFToken": app.templateCSRF(c), "Question": detail,
@@ -295,6 +300,7 @@ func (app *application) showQuestion(c *gin.Context) {
 		"CanReviseDecision":    usr.Role == "secretary" && canReviseDecision(status, hasReviewHistory),
 		"DecisionRevisions":    decisionRevisions,
 		"QuestionContextToken": updatedAt.Format(time.RFC3339Nano),
+		"RoundHistory":         rounds,
 	})
 }
 

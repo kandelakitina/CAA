@@ -100,6 +100,7 @@ func main() {
 	router.GET("/", app.requireUser(), app.dashboard)
 	router.POST("/questions", app.requireUser(), app.requireCSRF(), app.requireRole("secretary"), app.createQuestion)
 	router.GET("/questions/:id", app.requireUser(), app.showQuestion)
+	router.GET("/questions/:id/rounds/:kind/:roundID", app.requireUser(), app.showRoundHistory)
 	router.GET("/questions/:id/edit", app.requireUser(), app.requireRole("secretary"), app.showQuestionEdit)
 	router.GET("/questions/:id/decision-revisions/new", app.requireUser(), app.requireRole("secretary"), app.showDecisionRevision)
 	router.POST("/questions/:id/decision-revisions", app.requireUser(), app.requireCSRF(), app.requireRole("secretary"), app.createDecisionRevision)

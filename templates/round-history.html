@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ .Title }}</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  <header class="topbar"><div><p class="eyebrow">Neva Concert Hall</p><strong>История согласований</strong></div><div class="account"><a class="nav-link" href="/">Все вопросы</a><span>{{ .User.FullName }}</span></div></header>
+  <main class="content">
+    <section class="card dashboard-card">
+      <a class="back-link" href="/questions/{{ .Page.QuestionID }}">← Вернуться к текущему состоянию вопроса</a>
+      <h1>{{ .Page.QuestionTitle }}</h1>
+      <p class="lead">{{ if eq .Page.Kind "internal" }}Внутреннее согласование{{ else }}Голосование Комитета{{ end }} · раунд №{{ .Page.RoundID }}. Просмотр без изменения решений.</p>
+      <details class="upload-panel"><summary>Выбрать другой раунд</summary>
+        {{ range .Page.Rounds }}
+        <p><a class="text-link" href="/questions/{{ $.Page.QuestionID }}/rounds/{{ .Kind }}/{{ .ID }}">{{ .KindLabel }} · №{{ .ID }}</a> · {{ .StatusLabel }}<br>Начало: {{ .StartedLabel }} · срок: {{ .DeadlineLabel }}{{ if .FinishedLabel }} · завершение: {{ .FinishedLabel }}{{ end }}</p>
+        {{ end }}
+      </details>
+      {{ range .Page.Rounds }}{{ if and (eq .Kind $.Page.Kind) (eq .ID $.Page.RoundID) }}<p>Начало: {{ .StartedLabel }}{{ if .FinishedLabel }} · завершение: {{ .FinishedLabel }}{{ end }}</p>{{ end }}{{ end }}
+      {{ if eq .Page.Kind "internal" }}
+      <p><strong>{{ .Page.Internal.StatusLabel }}</strong> · Получено виз: {{ .Page.Internal.ProgressLabel }} · Срок: {{ .Page.Internal.DeadlineLabel }}</p>
+      <section class="question-text"><h2>Формулировка этого раунда</h2>{{ if .Page.Internal.DecisionText }}<p>{{ .Page.Internal.DecisionText }}</p>{{ else }}<p>В старом раунде формулировка отдельно не фиксировалась.</p>{{ end }}</section>
+      <div class="review-grid">
+        {{ range .Page.Internal.Items }}
+        <article class="review-item">
+          <h3>{{ .FileTitle }} · версия {{ .VersionNo }}</h3><p>{{ .ServiceLabel }}</p>
+          <a class="text-link" href="/questions/{{ $.Page.QuestionID }}/files/{{ .FileID }}/versions/{{ .VersionNo }}/download">Скачать рассмотренную версию</a>
+          {{ if .Superseded }}<p class="status-pill">Задание заменено новой версией; в итог раунда не входит</p>{{ end }}
+          {{ if .HasVisa }}
+          <div class="visa-result"><strong>{{ .Visa.DecisionLabel }}</strong><span>{{ .Visa.DecidedBy }} · {{ .Visa.DecidedLabel }}</span>
+            {{ if .Visa.CarryLabel }}<p>{{ .Visa.CarryLabel }}</p><details><summary>Формулировка исходной визы</summary>{{ if .Visa.SourceDecisionText }}<p>{{ .Visa.SourceDecisionText }}</p>{{ else }}<p>В старом раунде формулировка отдельно не фиксировалась.</p>{{ end }}</details>{{ end }}
+            {{ if .Visa.Comment }}<p>{{ .Visa.Comment }}</p>{{ end }}
+            {{ range .Visa.Attachments }}<p><a class="text-link" href="/questions/{{ $.Page.QuestionID }}/internal-review/attachments/{{ .ID }}/download">{{ .Filename }} · {{ .SizeLabel }}</a></p>{{ end }}
+          </div>
+          {{ else }}<p>Действующей визы нет.</p>{{ end }}
+          {{ range .History }}
+          <div class="question-text"><strong>Отозвана: {{ .DecisionLabel }}</strong><p>{{ .DecidedBy }} · отправлено {{ .DecidedLabel }} · отозвано {{ .WithdrawnLabel }}</p><p>{{ .Comment }}</p>
+            {{ range .Attachments }}<p><a class="text-link" href="/questions/{{ $.Page.QuestionID }}/internal-review/attachments/{{ .ID }}/download">{{ .Filename }} · {{ .SizeLabel }}</a></p>{{ end }}
+          </div>
+          {{ end }}
+        </article>
+        {{ end }}
+      </div>
+      {{ else }}
+      <p><strong>{{ .Page.Committee.StatusLabel }}</strong> · Проголосовали: {{ .Page.Committee.ProgressLabel }} · {{ .Page.Committee.QuorumLabel }} · Срок: {{ .Page.Committee.DeadlineLabel }}</p>
+      <section class="question-text"><h2>Формулировка, вынесенная на голосование</h2><p>{{ .Page.Committee.DecisionText }}</p></section>
+      <section class="question-text"><h2>Зафиксированный комплект</h2>
+        {{ range .Page.Committee.Files }}<p><a class="text-link" href="/questions/{{ $.Page.QuestionID }}/files/{{ .ID }}/versions/{{ .VersionNo }}/download">{{ .Title }} · версия {{ .VersionNo }}</a></p>{{ end }}
+      </section>
+      <h2>Зафиксированный состав и голоса</h2>
+      <div class="review-grid">
+        {{ range .Page.Committee.Participants }}
+        <article class="review-item"><h3>{{ .Name }}{{ if .IsChair }} · председатель{{ end }}</h3>
+          {{ if .HasVote }}
+          <strong>{{ .Vote.Decision }}</strong><p>{{ .Vote.VotedLabel }}</p><p>{{ .Vote.Comment }}</p>{{ if .Vote.TargetLabel }}<p>К материалу: {{ .Vote.TargetLabel }}</p>{{ end }}
+          {{ range .Vote.Attachments }}<p><a class="text-link" href="/questions/{{ $.Page.QuestionID }}/committee/attachments/{{ .ID }}/download">{{ .Filename }} · {{ .SizeLabel }}</a></p>{{ end }}
+          {{ else }}<p>Не проголосовал.</p>{{ end }}
+          {{ range .History }}
+          <div class="question-text"><strong>Отозван: {{ .Decision }}</strong><p>Отправлено {{ .VotedLabel }} · отозвано {{ .WithdrawnLabel }}</p><p>{{ .Comment }}</p>{{ if .TargetLabel }}<p>К материалу: {{ .TargetLabel }}</p>{{ end }}
+            {{ range .Attachments }}<p><a class="text-link" href="/questions/{{ $.Page.QuestionID }}/committee/attachments/{{ .ID }}/download">{{ .Filename }} · {{ .SizeLabel }}</a></p>{{ end }}
+          </div>
+          {{ end }}
+        </article>
+        {{ end }}
+      </div>
+      {{ end }}
+    </section>
+  </main>
+</body>
+</html>

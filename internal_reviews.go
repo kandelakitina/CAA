@@ -36,6 +36,8 @@ type internalReviewView struct {
 }
 
 type internalReviewItem struct {
+	FileID        int64
+	Superseded    bool
 	RequirementID int64
 	FileTitle     string
 	VersionNo     int
@@ -699,16 +701,23 @@ func parsePositiveID(c *gin.Context, parameter, message string) (int64, bool) {
 }
 
 func (app *application) loadInternalReview(ctx context.Context, questionID int64, questionStatus string, usr user) (internalReviewView, error) {
+	return loadInternalReviewRound(ctx, app.db, questionID, questionStatus, usr, 0)
+}
+
+func loadInternalReviewRound(ctx context.Context, db roundHistoryDB, questionID int64, questionStatus string, usr user, selectedRoundID int64) (internalReviewView, error) {
 	view := internalReviewView{CanStart: usr.Role == "secretary" && questionStatus == "draft"}
 	var roundID int64
 	var status, outcome string
 	var deadline time.Time
-	err := app.db.QueryRow(ctx, `
+	err := db.QueryRow(ctx, `
 		SELECT id, status, COALESCE(outcome, ''), deadline, COALESCE(frozen_decision_text, '')
-		FROM internal_review_rounds WHERE question_id = $1
+		FROM internal_review_rounds WHERE question_id = $1 AND ($2::BIGINT = 0 OR id = $2)
 		ORDER BY started_at DESC, id DESC LIMIT 1
-	`, questionID).Scan(&roundID, &status, &outcome, &deadline, &view.DecisionText)
+	`, questionID, selectedRoundID).Scan(&roundID, &status, &outcome, &deadline, &view.DecisionText)
 	if errors.Is(err, pgx.ErrNoRows) {
+		if selectedRoundID > 0 {
+			return view, pgx.ErrNoRows
+		}
 		return view, nil
 	}
 	if err != nil {
@@ -728,29 +737,35 @@ func (app *application) loadInternalReview(ctx context.Context, questionID int64
 	default:
 		view.StatusLabel = questionStatusLabel(outcome)
 	}
-	rows, err := app.db.Query(ctx, `
-		SELECT r.id, f.title, r.version_no, r.internal_service, r.status,
+	rows, err := db.Query(ctx, `
+		SELECT r.id, f.title, r.version_no, r.internal_service, r.status, f.id,
 		       EXISTS (SELECT 1 FROM question_file_versions pending
 		               WHERE pending.question_file_id = r.question_file_id AND pending.approval_status = 'pending')
 		FROM internal_review_requirements r
 		JOIN question_files f ON f.id = r.question_file_id
-		WHERE r.round_id = $1 AND r.status <> 'superseded'
+		WHERE r.round_id = $1 AND ($2 OR r.status <> 'superseded')
 		ORDER BY f.created_at, f.id,
-			CASE r.internal_service WHEN 'legal' THEN 1 WHEN 'finance' THEN 2 WHEN 'construction' THEN 3 ELSE 4 END
-	`, roundID)
+			CASE r.internal_service WHEN 'legal' THEN 1 WHEN 'finance' THEN 2 WHEN 'construction' THEN 3 ELSE 4 END,
+			r.version_no DESC, r.id DESC
+	`, roundID, selectedRoundID > 0)
 	if err != nil {
 		return internalReviewView{}, err
 	}
 	indexes := make(map[int64]int)
 	responded := 0
+	total := 0
 	for rows.Next() {
 		var item internalReviewItem
 		var requirementStatus string
-		if err := rows.Scan(&item.RequirementID, &item.FileTitle, &item.VersionNo, &item.Service, &requirementStatus, &item.FilePaused); err != nil {
+		if err := rows.Scan(&item.RequirementID, &item.FileTitle, &item.VersionNo, &item.Service, &requirementStatus, &item.FileID, &item.FilePaused); err != nil {
 			rows.Close()
 			return internalReviewView{}, err
 		}
 		item.ServiceLabel = internalServiceLabel(item.Service)
+		item.Superseded = requirementStatus == "superseded"
+		if !item.Superseded {
+			total++
+		}
 		item.CanRespond = view.Active && !item.FilePaused && requirementStatus == "pending" && usr.Role == "approver" && usr.InternalService == item.Service
 		if requirementStatus == "responded" {
 			responded++
@@ -763,12 +778,12 @@ func (app *application) loadInternalReview(ctx context.Context, questionID int64
 		return internalReviewView{}, err
 	}
 	rows.Close()
-	view.ProgressLabel = fmt.Sprintf("%d из %d", responded, len(view.Items))
-	attachmentsByVisa, err := loadVisaAttachmentViews(ctx, app.db, roundID)
+	view.ProgressLabel = fmt.Sprintf("%d из %d", responded, total)
+	attachmentsByVisa, err := loadVisaAttachmentViews(ctx, db, roundID)
 	if err != nil {
 		return internalReviewView{}, err
 	}
-	visaRows, err := app.db.Query(ctx, `
+	visaRows, err := db.Query(ctx, `
 		SELECT v.id, v.requirement_id, v.decision, v.comment, v.decided_by, u.full_name, v.decided_at,
 		       v.withdrawn_at IS NOT NULL, COALESCE(v.withdrawn_at, 'epoch'::timestamptz),
 		       COALESCE(v.source_visa_id, 0), COALESCE(carrier.full_name, ''),
@@ -819,6 +834,9 @@ func (app *application) loadInternalReview(ctx context.Context, questionID int64
 		visa.CanWithdraw = sourceVisaID == 0 && view.Active && decidedByID == usr.ID && usr.Role == "approver" && usr.InternalService == view.Items[index].Service && !time.Now().After(decidedAt.Add(24*time.Hour))
 		view.Items[index].HasVisa = true
 		view.Items[index].Visa = visa
+	}
+	if selectedRoundID > 0 {
+		view = readOnlyInternalReview(view)
 	}
 	return view, visaRows.Err()
 }

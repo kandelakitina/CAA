@@ -191,6 +191,14 @@
 	  {{ end }}
 
 	  <section class="internal-review-section">
+		{{ if .RoundHistory }}
+		<details class="upload-panel"><summary>Все раунды согласования и голосования</summary>
+		  {{ range .RoundHistory }}
+		  <p><a class="text-link" href="/questions/{{ $.Question.ID }}/rounds/{{ .Kind }}/{{ .ID }}">{{ .KindLabel }} · раунд №{{ .ID }}</a> · {{ .StatusLabel }}<br>
+		  Начало: {{ .StartedLabel }} · срок: {{ .DeadlineLabel }}{{ if .FinishedLabel }} · завершение: {{ .FinishedLabel }}{{ end }}</p>
+		  {{ end }}
+		</details>
+		{{ end }}
 		<div class="section-heading">
 		  <div><p class="eyebrow">Четыре дирекции</p><h2>Внутреннее согласование</h2></div>
 		  {{ if .InternalReview.HasRound }}<span class="status-pill">{{ .InternalReview.StatusLabel }}</span>{{ end }}
