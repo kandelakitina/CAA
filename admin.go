@@ -13,7 +13,7 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-const resetTables = `protocol_questions, protocols, protocol_sequences, committee_vote_attachments,
+const resetTables = `email_outbox, email_password_tokens, protocol_questions, protocols, protocol_sequences, committee_vote_attachments,
 committee_votes, committee_vote_participants, committee_vote_round_files, committee_vote_rounds,
 internal_visa_attachments, internal_review_visas, internal_review_requirements, decision_text_revisions,
 internal_review_rounds, question_file_versions, question_files, questions,

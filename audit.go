@@ -65,7 +65,13 @@ func (app *application) writeAudit(ctx context.Context, executor auditExecutor, 
 	`, actor.ID, actor.FullName, actor.Email, actor.Role, record.EventType,
 		record.TargetType, record.TargetID, record.TargetLabel, record.DocumentID,
 		record.QuestionID, record.VersionNo, record.Details)
-	return err
+	if err != nil {
+		return err
+	}
+	if err := app.invalidateEmailTokens(ctx, executor, record); err != nil {
+		return err
+	}
+	return app.queueWorkflowMail(ctx, executor, actor, record)
 }
 
 func (app *application) showAuditLog(c *gin.Context) {

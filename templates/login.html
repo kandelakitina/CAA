@@ -29,6 +29,8 @@
         </label>
         <button type="submit">Войти</button>
       </form>
+      <p><a href="/password/forgot">Забыли пароль?</a></p>
+      {{ if .PasswordChanged }}<p role="status">Пароль сохранён. Войдите с новым паролем.</p>{{ end }}
     </section>
   </main>
 </body>

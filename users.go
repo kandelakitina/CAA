@@ -104,6 +104,23 @@ func (app *application) renderUsers(c *gin.Context, status int, message string, 
 	if _, exists := values["Success"]; !exists && c.Query("assignment_updated") == "1" {
 		values["Success"] = "Назначение пользователя обновлено."
 	}
+	values["MailEnabled"] = app.mail != nil
+	if app.mail != nil {
+		var pending, retry, sent, cancelled int
+		err := app.db.QueryRow(c.Request.Context(), `SELECT
+		COUNT(*) FILTER (WHERE completed_at IS NULL),
+		COUNT(*) FILTER (WHERE completed_at IS NULL AND attempts>0),
+		COUNT(*) FILTER (WHERE outcome='sent'),
+		COUNT(*) FILTER (WHERE outcome='cancelled') FROM email_outbox`).Scan(&pending, &retry, &sent, &cancelled)
+		if err != nil {
+			values["MailStatusError"] = true
+		} else {
+			values["MailPending"], values["MailRetry"], values["MailSent"], values["MailCancelled"] = pending, retry, sent, cancelled
+		}
+	}
+	if c.Query("email_queued") == "1" {
+		values["Success"] = "Письмо со ссылкой поставлено в очередь отправки."
+	}
 	values["Title"] = "Пользователи"
 	values["User"] = c.MustGet("user").(user)
 	values["CSRFToken"] = app.templateCSRF(c)
@@ -148,6 +165,15 @@ func (app *application) createUser(c *gin.Context) {
 	}
 	if role != "approver" {
 		internalService = ""
+	}
+	if app.mail != nil {
+		var err error
+		password, err = randomToken(32)
+		if err != nil {
+			respondMessage(c, 500, "Не удалось создать приглашение")
+			return
+		}
+		confirmation = password
 	}
 	if len(password) < minimumPasswordLength {
 		app.renderUsers(c, http.StatusUnprocessableEntity, "Временный пароль должен содержать не менее 8 символов", values)
@@ -202,8 +228,18 @@ func (app *application) createUser(c *gin.Context) {
 		respondMessage(c, http.StatusInternalServerError, "Не удалось записать событие аудита")
 		return
 	}
+	if app.mail != nil {
+		if err := app.issuePasswordEmail(c.Request.Context(), tx, userID, true); err != nil {
+			respondMessage(c, 500, "Не удалось подготовить приглашение")
+			return
+		}
+	}
 	if err := tx.Commit(c.Request.Context()); err != nil {
 		respondMessage(c, http.StatusInternalServerError, "Не удалось создать пользователя")
+		return
+	}
+	if app.mail != nil {
+		c.Redirect(303, "/admin/users?email_queued=1")
 		return
 	}
 	c.Redirect(http.StatusSeeOther, "/admin/users")
@@ -354,6 +390,14 @@ func (app *application) resetUserPassword(c *gin.Context) {
 	}
 	password := c.PostForm("temporary_password")
 	confirmation := c.PostForm("password_confirmation")
+	if app.mail != nil {
+		password, err = randomToken(32)
+		if err != nil {
+			respondMessage(c, 500, "Не удалось подготовить сброс")
+			return
+		}
+		confirmation = password
+	}
 	if len(password) < minimumPasswordLength {
 		app.renderUsers(c, http.StatusUnprocessableEntity, "Временный пароль должен содержать не менее 8 символов", values)
 		return
@@ -399,8 +443,18 @@ func (app *application) resetUserPassword(c *gin.Context) {
 		respondMessage(c, http.StatusInternalServerError, "Не удалось записать событие аудита")
 		return
 	}
+	if app.mail != nil {
+		if err := app.issuePasswordEmail(c.Request.Context(), tx, userID, false); err != nil {
+			respondMessage(c, 500, "Не удалось подготовить письмо")
+			return
+		}
+	}
 	if err := tx.Commit(c.Request.Context()); err != nil {
 		respondMessage(c, http.StatusInternalServerError, "Не удалось сохранить временный пароль")
+		return
+	}
+	if app.mail != nil {
+		c.Redirect(303, "/admin/users?email_queued=1")
 		return
 	}
 	c.Redirect(http.StatusSeeOther, "/admin/users?password_reset=1")
@@ -556,13 +610,17 @@ func (app *application) changePassword(c *gin.Context) {
 		return
 	}
 	defer tx.Rollback(c.Request.Context())
-	_, err = tx.Exec(c.Request.Context(), `
+	changed, err := tx.Exec(c.Request.Context(), `
 		UPDATE users
 		SET password_hash = $2, must_change_password = FALSE
-		WHERE id = $1
-	`, usr.ID, newHash)
+		WHERE id = $1 AND active=TRUE AND password_hash=$3
+	`, usr.ID, newHash, currentHash)
 	if err != nil {
 		respondMessage(c, http.StatusInternalServerError, "Не удалось сохранить новый пароль")
+		return
+	}
+	if changed.RowsAffected() != 1 {
+		renderError(http.StatusConflict, "Пароль или доступ уже изменён. Повторите вход")
 		return
 	}
 	if err := app.writeAudit(c.Request.Context(), tx, usr, auditRecord{

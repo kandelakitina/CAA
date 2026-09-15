@@ -14,7 +14,11 @@
     <section class="card dashboard-card">
       <p class="eyebrow">Администрирование</p>
       <h1>Пользователи</h1>
-      <p class="lead">Администратор задаёт временный пароль и передаёт его пользователю безопасным каналом. При первом входе пользователь обязан установить собственный пароль.</p>
+      {{ if .MailEnabled }}
+      <p class="lead">Приглашайте пользователей по электронной почте. Пароль пользователь устанавливает самостоятельно по одноразовой ссылке.</p>
+      {{ if .MailStatusError }}<p class="alert">Не удалось загрузить состояние отправки писем.</p>{{ else }}
+      <p class="form-hint">Почта: в очереди — {{ .MailPending }}, из них ожидают повторной попытки — {{ .MailRetry }}. Передано почтовому серверу — {{ .MailSent }}, отменено — {{ .MailCancelled }}.</p>{{ end }}
+      {{ else }}<p class="lead">Почта не настроена. Администратор задаёт временный пароль и передаёт его пользователю безопасным каналом. При первом входе пользователь обязан установить собственный пароль.</p>{{ end }}
       {{ if .Error }}<div class="alert">{{ .Error }}</div>{{ end }}
       {{ if .Success }}<div class="success-note users-note">{{ .Success }}</div>{{ end }}
 
@@ -53,6 +57,7 @@
 			<input type="checkbox" name="is_committee_chair" value="1" {{ if .SelectedChair }}checked{{ end }}>
 			<span><strong>Председатель Комитета</strong><small>Применяется только к члену Комитета</small></span>
 		  </label>
+          {{ if .MailEnabled }}<p class="form-hint">Пользователь получит письмо со ссылкой для установки пароля. Ссылка действует один час.</p>{{ else }}
           <label>
             Временный пароль — не менее 8 символов
             <input type="password" name="temporary_password" minlength="8" required autocomplete="new-password">
@@ -61,7 +66,8 @@
             Повторите временный пароль
             <input type="password" name="password_confirmation" minlength="8" required autocomplete="new-password">
           </label>
-          <button type="submit">Создать пользователя</button>
+          {{ end }}
+          <button type="submit">{{ if .MailEnabled }}Пригласить по почте{{ else }}Создать пользователя{{ end }}</button>
         </form>
       </details>
 
@@ -110,6 +116,7 @@
             <summary>Сбросить пароль</summary>
             <form class="form-stack reset-form" method="post" action="/admin/users/{{ .ID }}/reset-password">
               <input type="hidden" name="_csrf" value="{{ $.CSRFToken }}">
+              {{ if $.MailEnabled }}<p class="form-hint">Прежний пароль и сессии будут отключены. Пользователь получит одноразовую ссылку для установки нового пароля.</p>{{ else }}
               <p class="form-hint">Пользователь будет выведен со всех устройств и при следующем входе должен будет заменить этот пароль.</p>
               <label>
                 Новый временный пароль
@@ -119,7 +126,8 @@
                 Повторите временный пароль
                 <input type="password" name="password_confirmation" minlength="8" required autocomplete="new-password">
               </label>
-              <button type="submit">Подтвердить сброс</button>
+              {{ end }}
+              <button type="submit">{{ if $.MailEnabled }}Сбросить и отправить ссылку{{ else }}Подтвердить сброс{{ end }}</button>
             </form>
           </details>
           <form class="delete-user-form" method="post" action="/admin/users/{{ .ID }}/delete" onsubmit="return confirm('Удалить пользователя {{ .FullName }}? Вход будет немедленно отключён.');">

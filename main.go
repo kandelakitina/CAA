@@ -35,6 +35,7 @@ type application struct {
 	sessionSecret []byte
 	storage       *storage
 	loginLimiter  *loginLimiter
+	mail          *mailConfig
 }
 
 type user struct {
@@ -70,6 +71,10 @@ func main() {
 		sessionSecret: []byte(secret),
 		loginLimiter:  newLoginLimiter(5, 15*time.Minute),
 	}
+	app.mail, err = loadMailConfig()
+	if err != nil {
+		log.Fatal(err)
+	}
 	app.storage, err = newStorage(ctx)
 	if err != nil {
 		log.Printf("S3 storage is not ready: %v", err)
@@ -83,6 +88,9 @@ func main() {
 
 	router := app.routes()
 	go app.runStorageCleanup()
+	if app.mail != nil {
+		go app.runMailQueue()
+	}
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"
@@ -113,6 +121,10 @@ func (app *application) routes() *gin.Engine {
 	router.GET("/registry", app.requireUser(), func(c *gin.Context) { app.renderDashboard(c, http.StatusOK, "") })
 	router.GET("/login", app.showLogin)
 	router.POST("/login", app.requireLoginCSRF(), app.login)
+	router.GET("/password/reset", app.showEmailPassword)
+	router.POST("/password/reset", app.requireEmailCSRF(), app.consumeEmailPassword)
+	router.GET("/password/forgot", app.showForgotPassword)
+	router.POST("/password/forgot", app.requireEmailCSRF(), app.forgotPassword)
 	router.POST("/logout", app.requireUser(), app.requireCSRF(), app.logout)
 	router.GET("/password/change", app.requireUser(), app.showChangePassword)
 	router.POST("/password/change", app.requireUser(), app.requireCSRF(), app.changePassword)
@@ -658,7 +670,10 @@ func (app *application) migrate(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	return app.migrateManagement(ctx)
+	if err := app.migrateManagement(ctx); err != nil {
+		return err
+	}
+	return app.migrateMail(ctx)
 }
 
 func (app *application) createInitialAdmin(ctx context.Context) error {
@@ -718,7 +733,7 @@ func (app *application) showLogin(c *gin.Context) {
 		respondMessage(c, http.StatusInternalServerError, "Не удалось подготовить форму входа")
 		return
 	}
-	c.HTML(http.StatusOK, "login.html", gin.H{"CSRFToken": token})
+	c.HTML(http.StatusOK, "login.html", gin.H{"CSRFToken": token, "PasswordChanged": c.Query("password_changed") == "1"})
 }
 
 func (app *application) login(c *gin.Context) {
@@ -765,6 +780,14 @@ func (app *application) login(c *gin.Context) {
 		return
 	}
 	defer tx.Rollback(c.Request.Context())
+	// Serialize session creation with password resets; previously checked
+	// credentials must not create a fresh session after a concurrent reset.
+	var credentialsCurrent bool
+	err = tx.QueryRow(c.Request.Context(), `SELECT active AND password_hash=$2 FROM users WHERE id=$1 FOR UPDATE`, usr.ID, passwordHash).Scan(&credentialsCurrent)
+	if err != nil || !credentialsCurrent {
+		respondMessage(c, http.StatusUnauthorized, "Данные для входа изменились. Повторите вход")
+		return
+	}
 	_, err = tx.Exec(c.Request.Context(), `
 		INSERT INTO sessions (token_hash, user_id, expires_at)
 		VALUES ($1, $2, $3)
