@@ -23,7 +23,7 @@
 
 В рассмотренном коде не обнаружены MFA/SSO, антивирусный карантин загрузок, шифрование содержимого файлов ключом клиента и внешний неизменяемый журнал. Наличие HTTPS не означает шифрование дисков. Наличие тестов не означает, что система прошла независимый аудит безопасности.
 
-Источники в репозитории: `main.go`, `security.go`, `storage.go`, `admin.go`, `documents.go`, `question_files.go`, `visa_attachments.go`, `committee_attachments.go`. Оценка относится к текущей версии, а не только к первоначальному описанию в AGENTS.md.
+Источники в репозитории: `main.go`, `security.go`, `storage.go`, `admin.go`, `question_files.go`, `visa_attachments.go`, `committee_attachments.go`. Оценка относится к текущей версии, а не только к первоначальному описанию в AGENTS.md.
 
 ## 3. Риски Timeweb Cloud
 

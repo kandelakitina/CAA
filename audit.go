@@ -22,7 +22,6 @@ type auditRecord struct {
 	TargetType  string
 	TargetID    *int64
 	TargetLabel string
-	DocumentID  *int64
 	QuestionID  *int64
 	VersionNo   *int
 	Details     string
@@ -46,11 +45,10 @@ type auditActor struct {
 }
 
 type auditFilters struct {
-	EventType  string
-	ActorID    int64
-	DocumentID int64
-	DateFrom   string
-	DateTo     string
+	EventType string
+	ActorID   int64
+	DateFrom  string
+	DateTo    string
 }
 
 func (app *application) writeAudit(ctx context.Context, executor auditExecutor, actor user, record auditRecord) error {
@@ -60,11 +58,11 @@ func (app *application) writeAudit(ctx context.Context, executor auditExecutor, 
 	_, err := executor.Exec(ctx, `
 		INSERT INTO audit_events (
 			actor_user_id, actor_name, actor_email, actor_role, event_type,
-			target_type, target_id, target_label, document_id, question_id, version_no, details
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+			target_type, target_id, target_label, question_id, version_no, details
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 	`, actor.ID, actor.FullName, actor.Email, actor.Role, record.EventType,
-		record.TargetType, record.TargetID, record.TargetLabel, record.DocumentID,
-		record.QuestionID, record.VersionNo, record.Details)
+		record.TargetType, record.TargetID, record.TargetLabel, record.QuestionID,
+		record.VersionNo, record.Details)
 	if err != nil {
 		return err
 	}
@@ -83,17 +81,16 @@ func (app *application) showAuditLog(c *gin.Context) {
 
 	rows, err := app.db.Query(c.Request.Context(), `
 		SELECT id, actor_name, actor_email, actor_role, event_type,
-		       target_label, COALESCE(document_id, 0), COALESCE(question_id, 0),
+		       target_label, COALESCE(question_id, 0),
 		       COALESCE(version_no, 0), details, created_at
 		FROM audit_events
 		WHERE ($1 = '' OR event_type = $1)
 		  AND ($2::BIGINT = 0 OR actor_user_id = $2)
-		  AND ($3::BIGINT = 0 OR document_id = $3)
-		  AND ($4 = '' OR created_at >= $4::DATE)
-		  AND ($5 = '' OR created_at < ($5::DATE + INTERVAL '1 day'))
+		  AND ($3 = '' OR created_at >= $3::DATE)
+		  AND ($4 = '' OR created_at < ($4::DATE + INTERVAL '1 day'))
 		ORDER BY created_at DESC, id DESC
 		LIMIT 200
-	`, filters.EventType, filters.ActorID, filters.DocumentID, filters.DateFrom, filters.DateTo)
+	`, filters.EventType, filters.ActorID, filters.DateFrom, filters.DateTo)
 	if err != nil {
 		respondMessage(c, http.StatusInternalServerError, "Не удалось загрузить журнал аудита")
 		return
@@ -104,25 +101,21 @@ func (app *application) showAuditLog(c *gin.Context) {
 	for rows.Next() {
 		var item auditListItem
 		var eventType, role string
-		var documentID int64
 		var questionID int64
 		var versionNo int
 		var createdAt time.Time
 		if err := rows.Scan(&item.ID, &item.ActorName, &item.ActorEmail, &role, &eventType,
-			&item.TargetLabel, &documentID, &questionID, &versionNo, &item.Details, &createdAt); err != nil {
+			&item.TargetLabel, &questionID, &versionNo, &item.Details, &createdAt); err != nil {
 			respondMessage(c, http.StatusInternalServerError, "Не удалось прочитать журнал аудита")
 			return
 		}
 		item.ActorRole = roleLabel(role)
 		item.EventLabel = auditEventLabel(eventType)
-		if documentID > 0 {
-			item.ObjectMeta = fmt.Sprintf("Документ №%d", documentID)
+		if questionID > 0 {
+			item.ObjectMeta = fmt.Sprintf("Вопрос №%d", questionID)
 			if versionNo > 0 {
 				item.ObjectMeta += fmt.Sprintf(" · версия %d", versionNo)
 			}
-		}
-		if questionID > 0 {
-			item.ObjectMeta = fmt.Sprintf("Вопрос №%d", questionID)
 		}
 		item.CreatedAt = createdAt.Format("02.01.2006 15:04:05")
 		events = append(events, item)
@@ -186,12 +179,6 @@ func parseAuditFilters(c *gin.Context) (auditFilters, error) {
 			return auditFilters{}, errors.New("Некорректный пользователь в фильтре")
 		}
 	}
-	if value := strings.TrimSpace(c.Query("document_id")); value != "" {
-		filters.DocumentID, err = strconv.ParseInt(value, 10, 64)
-		if err != nil || filters.DocumentID < 1 {
-			return auditFilters{}, errors.New("Некорректный номер документа в фильтре")
-		}
-	}
 	for _, value := range []string{filters.DateFrom, filters.DateTo} {
 		if value != "" {
 			if _, err := time.Parse("2006-01-02", value); err != nil {
@@ -207,7 +194,6 @@ func auditEventLabel(eventType string) string {
 		"admin.reset":                     "Полный сброс данных",
 		"admin.archive_all":               "Материалы архивированы, доступ пользователей отключён",
 		"admin.archive_question":          "Вопрос помещён в архив",
-		"admin.archive_document":          "Документ помещён в архив",
 		"user.restored":                   "Восстановлен доступ пользователя",
 		"user.sessions_revoked":           "Завершены сессии пользователя",
 		"session.login":                   "Вход в систему",
@@ -240,12 +226,6 @@ func auditEventLabel(eventType string) string {
 		"committee_vote.cancelled":        "Отменено голосование Комитета",
 		"protocol.created":                "Сформирован протокол",
 		"protocol.deleted":                "Удалён протокол",
-		"document.created":                "Создан документ",
-		"document.version_uploaded":       "Загружена версия документа",
-		"approval.started":                "Запущено согласование",
-		"approval.response_submitted":     "Отправлено решение",
-		"approval.completed":              "Завершено согласование",
-		"approval.cancelled":              "Отменено согласование",
 	}
 	if label, ok := labels[eventType]; ok {
 		return label

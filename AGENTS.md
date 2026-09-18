@@ -74,24 +74,22 @@ before changing configuration. Never put real values into repository files.
 - User deletion is intentionally a soft deletion (`active = false`) so names,
   decisions and the audit trail remain available. Active sessions are revoked.
 - An administrator cannot delete their own account.
-- Deletion is blocked when the user still has a pending response in an active
-  approval round.
-- Document registry and upload of `.doc`, `.docx` and `.pdf` files, currently
-  limited to 25 MB.
-- Explicit document versions: every upload is a new immutable version rather
-  than an overwrite. Previous versions can be listed and downloaded.
-- Approval rounds are attached to a specific document version.
-- Participants submit their own approval response. Secretary/administrator can
-  complete or cancel a round.
-- Uploading a new version is blocked while that document has an active approval
-  round.
+- Deletion is blocked when a committee member still has a pending vote in an
+  active Committee round, or when removing an approver would leave an active
+  internal review without a representative of the required service.
+- Questions contain independently versioned `.doc`, `.docx`, `.xls`, `.xlsx`
+  and `.pdf` files, currently limited to 25 MB each.
+- Every accepted upload is a new immutable file version rather than an
+  overwrite. Previous versions can be listed and downloaded.
+- Internal reviews and Committee votes are tied to exact file versions.
 
 ## Domain and data-integrity rules
 
 - Auditability is essential because this is a corporate approval system.
-- Do not hard-delete users, documents, versions, approval rounds, participants
-  or decisions unless the owner explicitly approves a retention design.
-- Never mutate an already approved document version or silently replace its S3
+- Do not hard-delete users, questions, files, versions, review rounds,
+  participants or decisions unless the owner explicitly approves a retention
+  design.
+- Never mutate an already approved file version or silently replace its S3
   object.
 - A decision must remain tied to the exact version reviewed by the participant.
 - Perform related database changes in a transaction.
@@ -142,4 +140,3 @@ Timeweb deploys after the owner pushes to the connected branch. A successful
 local build is not itself authorization to push. When the owner requests a
 deployment, provide a concise summary, the exact commit contents, any new
 environment variables or migrations, and a short production smoke-test list.
-

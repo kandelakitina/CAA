@@ -59,6 +59,27 @@ type questionInput struct {
 	Currency         string
 }
 
+func (app *application) renderDashboard(c *gin.Context, status int, message string) {
+	app.renderDashboardWithQuestion(c, status, message, questionInput{})
+}
+
+func (app *application) renderDashboardWithQuestion(c *gin.Context, status int, message string, values questionInput) {
+	usr := c.MustGet("user").(user)
+	questions, err := app.listQuestions(c, usr)
+	if err != nil {
+		respondMessage(c, http.StatusInternalServerError, "Не удалось загрузить реестр вопросов")
+		return
+	}
+	c.HTML(status, "dashboard.html", gin.H{
+		"Title":     "Neva Concert Hall Corporate Approvals",
+		"User":      usr,
+		"CSRFToken": app.templateCSRF(c),
+		"Questions": questions,
+		"Question":  values,
+		"Error":     message,
+	})
+}
+
 func (app *application) listQuestions(c *gin.Context, usr user) ([]questionListItem, error) {
 	rows, err := app.db.Query(c.Request.Context(), `
 		SELECT id, title, question_type, status, internal_deadline, updated_at

@@ -482,19 +482,19 @@ func (app *application) deleteUser(c *gin.Context) {
 		return
 	}
 
-	var pendingApprovals int
+	var pendingVotes int
 	err = tx.QueryRow(c.Request.Context(), `
 		SELECT COUNT(*)
-		FROM approval_participants p
-		JOIN approval_rounds r ON r.id = p.round_id
-		WHERE p.user_id = $1 AND r.status = 'active' AND p.decision IS NULL
-	`, userID).Scan(&pendingApprovals)
+		FROM committee_vote_participants p
+		JOIN committee_vote_rounds r ON r.id = p.round_id
+		WHERE p.user_id = $1 AND r.status = 'active' AND p.status = 'pending'
+	`, userID).Scan(&pendingVotes)
 	if err != nil {
 		respondMessage(c, http.StatusInternalServerError, "Не удалось проверить активные согласования")
 		return
 	}
-	if pendingApprovals > 0 {
-		app.renderUsers(c, http.StatusConflict, "Пользователя нельзя удалить: от него ожидается решение в активном согласовании", nil)
+	if pendingVotes > 0 {
+		app.renderUsers(c, http.StatusConflict, "Пользователя нельзя удалить: от него ожидается голос в активном голосовании Комитета", nil)
 		return
 	}
 	var targetRole, targetService string

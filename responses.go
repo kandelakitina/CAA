@@ -24,8 +24,6 @@ func respondMessage(c *gin.Context, status int, format string, values ...any) {
 		if id, err := strconv.ParseInt(c.Param("id"), 10, 64); err == nil && id > 0 {
 			if strings.HasPrefix(c.FullPath(), "/questions/:id") {
 				backURL, backLabel = fmt.Sprintf("/questions/%d", id), "Вернуться к вопросу"
-			} else if strings.HasPrefix(c.FullPath(), "/documents/:id") {
-				backURL, backLabel = fmt.Sprintf("/documents/%d", id), "Вернуться к документу"
 			}
 		}
 	}

@@ -110,7 +110,7 @@ func TestQuestionEditTransaction(t *testing.T) {
 				if tx.auditArgs[4] != "question.updated" {
 					t.Fatal("missing edit audit")
 				}
-				details := tx.auditArgs[11].(string)
+				details := tx.auditArgs[10].(string)
 				if !strings.Contains(details, "Старая формулировка") || !strings.Contains(details, "Одобрить заём") {
 					t.Fatal("audit must preserve old and new text")
 				}

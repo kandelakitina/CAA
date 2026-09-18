@@ -16,13 +16,11 @@ import (
 const resetTables = `email_outbox, email_password_tokens, protocol_questions, protocols, protocol_sequences, committee_vote_attachments,
 committee_votes, committee_vote_participants, committee_vote_round_files, committee_vote_rounds,
 internal_visa_attachments, internal_review_visas, internal_review_requirements, decision_text_revisions,
-internal_review_rounds, question_file_versions, question_files, questions,
-approval_participants, approval_rounds, document_versions, documents, audit_events`
+internal_review_rounds, question_file_versions, question_files, questions, audit_events`
 
 func (app *application) migrateManagement(ctx context.Context) error {
 	_, err := app.db.Exec(ctx, `
 		ALTER TABLE questions ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ;
-		ALTER TABLE documents ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ;
 		CREATE TABLE IF NOT EXISTS storage_cleanup (
 			id BIGSERIAL PRIMARY KEY, endpoint TEXT NOT NULL, bucket TEXT NOT NULL,
 			object_key TEXT NOT NULL, version_id TEXT NOT NULL DEFAULT '',
@@ -39,33 +37,31 @@ func (app *application) migrateManagement(ctx context.Context) error {
 			IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname='questions_archive_guard' AND tgrelid='questions'::regclass) THEN
 				CREATE TRIGGER questions_archive_guard BEFORE UPDATE ON questions FOR EACH ROW EXECUTE FUNCTION prevent_archived_changes();
 			END IF;
-			IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname='documents_archive_guard' AND tgrelid='documents'::regclass) THEN
-				CREATE TRIGGER documents_archive_guard BEFORE UPDATE ON documents FOR EACH ROW EXECUTE FUNCTION prevent_archived_changes();
-			END IF;
 		END $$;
 	`)
 	return err
 }
 
 type adminSnapshot struct {
-	Questions, Documents, Users, ActiveRounds, Files, PendingCleanup int
-	AuditID                                                          int64
+	Questions, Users, ActiveRounds, Files, PendingCleanup int
+	AuditID                                               int64
 }
 type adminMaterial struct {
-	ID                  int64
-	Kind, Title, Status string
-	Archived            bool
+	ID       int64
+	Title    string
+	Status   string
+	Archived bool
 }
 
 func loadAdminSnapshot(ctx context.Context, db revisionPlanDB, actorID int64) (adminSnapshot, error) {
 	var s adminSnapshot
 	err := db.QueryRow(ctx, `SELECT
-		(SELECT COUNT(*) FROM questions), (SELECT COUNT(*) FROM documents),
+		(SELECT COUNT(*) FROM questions),
 		(SELECT COUNT(*) FROM users WHERE id<>$1),
-		(SELECT COUNT(*) FROM internal_review_rounds WHERE status='active')+(SELECT COUNT(*) FROM committee_vote_rounds WHERE status='active')+(SELECT COUNT(*) FROM approval_rounds WHERE status='active'),
-		(SELECT COUNT(*) FROM question_file_versions)+(SELECT COUNT(*) FROM document_versions)+(SELECT COUNT(*) FROM internal_visa_attachments)+(SELECT COUNT(*) FROM committee_vote_attachments),
+		(SELECT COUNT(*) FROM internal_review_rounds WHERE status='active')+(SELECT COUNT(*) FROM committee_vote_rounds WHERE status='active'),
+		(SELECT COUNT(*) FROM question_file_versions)+(SELECT COUNT(*) FROM internal_visa_attachments)+(SELECT COUNT(*) FROM committee_vote_attachments),
 		(SELECT COUNT(*) FROM storage_cleanup WHERE completed_at IS NULL),
-		(SELECT COALESCE(MAX(id),0) FROM audit_events)`, actorID).Scan(&s.Questions, &s.Documents, &s.Users, &s.ActiveRounds, &s.Files, &s.PendingCleanup, &s.AuditID)
+		(SELECT COALESCE(MAX(id),0) FROM audit_events)`, actorID).Scan(&s.Questions, &s.Users, &s.ActiveRounds, &s.Files, &s.PendingCleanup, &s.AuditID)
 	return s, err
 }
 
@@ -76,7 +72,7 @@ func (app *application) adminDashboard(c *gin.Context) {
 		respondMessage(c, 500, "Не удалось загрузить сводку")
 		return
 	}
-	rows, err := app.db.Query(c.Request.Context(), `SELECT id,'question',title,status,archived_at IS NOT NULL FROM questions
+	rows, err := app.db.Query(c.Request.Context(), `SELECT id,title,status,archived_at IS NOT NULL FROM questions
 		ORDER BY id DESC LIMIT 200`)
 	if err != nil {
 		respondMessage(c, 500, "Не удалось загрузить материалы")
@@ -86,15 +82,11 @@ func (app *application) adminDashboard(c *gin.Context) {
 	var items []adminMaterial
 	for rows.Next() {
 		var item adminMaterial
-		if err := rows.Scan(&item.ID, &item.Kind, &item.Title, &item.Status, &item.Archived); err != nil {
+		if err := rows.Scan(&item.ID, &item.Title, &item.Status, &item.Archived); err != nil {
 			respondMessage(c, 500, "Не удалось прочитать материалы")
 			return
 		}
-		if item.Kind == "question" {
-			item.Status = questionStatusLabel(item.Status)
-		} else {
-			item.Status = documentStatusLabel(item.Status)
-		}
+		item.Status = questionStatusLabel(item.Status)
 		items = append(items, item)
 	}
 	if rows.Err() != nil {
@@ -112,8 +104,6 @@ func maintenanceAction(action string) (string, string, bool) {
 		return "Полностью удалить данные и файлы, кроме текущего администратора", "УДАЛИТЬ ВСЁ", true
 	case "archive_question":
 		return "Убрать вопрос в архив", "В АРХИВ", true
-	case "archive_document":
-		return "Убрать документ в архив", "В АРХИВ", true
 	default:
 		return "", "", false
 	}
@@ -133,12 +123,8 @@ func (app *application) previewMaintenance(c *gin.Context) {
 	}
 	id, _ := strconv.ParseInt(c.PostForm("target_id"), 10, 64)
 	var target string
-	if action == "archive_question" || action == "archive_document" {
-		table := "questions"
-		if action == "archive_document" {
-			table = "documents"
-		}
-		if err := app.db.QueryRow(c.Request.Context(), "SELECT title FROM "+table+" WHERE id=$1 AND archived_at IS NULL", id).Scan(&target); err != nil {
+	if action == "archive_question" {
+		if err := app.db.QueryRow(c.Request.Context(), "SELECT title FROM questions WHERE id=$1 AND archived_at IS NULL", id).Scan(&target); err != nil {
 			respondMessage(c, 404, "Материал не найден или уже в архиве")
 			return
 		}
@@ -212,7 +198,7 @@ func (app *application) executeMaintenance(c *gin.Context) {
 		}
 		_, err = tx.Exec(ctx, `INSERT INTO storage_cleanup(endpoint,bucket,object_key,version_id)
 			SELECT $1,$2,object_key,COALESCE(s3_version_id,'') FROM (
-			SELECT object_key,s3_version_id FROM question_file_versions UNION ALL SELECT object_key,s3_version_id FROM document_versions
+			SELECT object_key,s3_version_id FROM question_file_versions
 			UNION ALL SELECT object_key,s3_version_id FROM internal_visa_attachments UNION ALL SELECT object_key,s3_version_id FROM committee_vote_attachments) f
 			ON CONFLICT DO NOTHING`, strings.TrimRight(os.Getenv("S3_ENDPOINT"), "/"), os.Getenv("S3_BUCKET"))
 		if err == nil {
@@ -228,9 +214,6 @@ func (app *application) executeMaintenance(c *gin.Context) {
 		if action == "archive_all" || action == "archive_question" {
 			err = archiveQuestions(ctx, tx, actor, id, action == "archive_all", reason)
 		}
-		if err == nil && (action == "archive_all" || action == "archive_document") {
-			err = archiveDocuments(ctx, tx, id, action == "archive_all")
-		}
 		if err == nil && action == "archive_all" {
 			_, err = tx.Exec(ctx, "UPDATE users SET active=FALSE WHERE id<>$1", actor.ID)
 			if err == nil {
@@ -239,7 +222,7 @@ func (app *application) executeMaintenance(c *gin.Context) {
 		}
 	}
 	if err == nil {
-		err = app.writeAudit(ctx, tx, actor, auditRecord{EventType: "admin." + action, TargetType: "maintenance", TargetID: &id, Details: fmt.Sprintf("Вопросов: %d; документов: %d; других пользователей: %d; файлов: %d. Причина: %s", s.Questions, s.Documents, s.Users, s.Files, reason)})
+		err = app.writeAudit(ctx, tx, actor, auditRecord{EventType: "admin." + action, TargetType: "maintenance", TargetID: &id, Details: fmt.Sprintf("Вопросов: %d; других пользователей: %d; файлов: %d. Причина: %s", s.Questions, s.Users, s.Files, reason)})
 	}
 	if err == nil {
 		err = tx.Commit(ctx)
@@ -264,14 +247,6 @@ func archiveQuestions(ctx context.Context, tx pgx.Tx, actor user, id int64, all 
 		status=CASE WHEN status='approved' THEN status ELSE 'cancelled' END WHERE archived_at IS NULL AND ($1 OR id=$2)`, all, id, reason, actor.FullName)
 	return err
 }
-func archiveDocuments(ctx context.Context, tx pgx.Tx, id int64, all bool) error {
-	if _, err := tx.Exec(ctx, `UPDATE approval_rounds SET status='cancelled',completed_at=NOW() WHERE status='active' AND document_id IN (SELECT id FROM documents WHERE archived_at IS NULL AND ($1 OR id=$2))`, all, id); err != nil {
-		return err
-	}
-	_, err := tx.Exec(ctx, `UPDATE documents SET archived_at=NOW(),status=CASE WHEN status='approved' THEN status ELSE 'rejected' END,updated_at=NOW() WHERE archived_at IS NULL AND ($1 OR id=$2)`, all, id)
-	return err
-}
-
 func (app *application) processStorageCleanup(ctx context.Context) {
 	if app.storage == nil {
 		return

@@ -58,7 +58,7 @@ func (b *localBrowser) request(method, path string, fields url.Values, files [][
 				}
 			}
 			field := "attachments"
-			if strings.Contains(path, "/files") || strings.HasPrefix(path, "/documents") {
+			if strings.Contains(path, "/files") {
 				field = "file"
 			}
 			for _, file := range files {
@@ -422,8 +422,6 @@ func TestLocalIntegration(t *testing.T) {
 		t.Fatal("report bypassed Committee visibility")
 	}
 	admin.request("GET", "/reports/statuses?status=approved", nil, nil, 200)
-	admin.request("POST", "/documents", nil, nil, 404)
-	admin.request("GET", "/documents/1", nil, nil, 404)
 	admin.request("GET", "/storage/check", nil, nil, 404)
 	admin.request("GET", "/admin/storage/check", nil, nil, 200)
 	users["observer"].request("GET", "/admin/storage/check", nil, nil, 403)

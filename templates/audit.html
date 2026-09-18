@@ -50,12 +50,6 @@
 			<option value="committee_vote.cancelled" {{ if eq .Filters.EventType "committee_vote.cancelled" }}selected{{ end }}>Отмена голосования Комитета</option>
 			<option value="protocol.created" {{ if eq .Filters.EventType "protocol.created" }}selected{{ end }}>Формирование протокола</option>
 			<option value="protocol.deleted" {{ if eq .Filters.EventType "protocol.deleted" }}selected{{ end }}>Удаление протокола</option>
-            <option value="document.created" {{ if eq .Filters.EventType "document.created" }}selected{{ end }}>Создание документа</option>
-            <option value="document.version_uploaded" {{ if eq .Filters.EventType "document.version_uploaded" }}selected{{ end }}>Новая версия</option>
-            <option value="approval.started" {{ if eq .Filters.EventType "approval.started" }}selected{{ end }}>Запуск согласования</option>
-            <option value="approval.response_submitted" {{ if eq .Filters.EventType "approval.response_submitted" }}selected{{ end }}>Решение участника</option>
-            <option value="approval.completed" {{ if eq .Filters.EventType "approval.completed" }}selected{{ end }}>Завершение</option>
-            <option value="approval.cancelled" {{ if eq .Filters.EventType "approval.cancelled" }}selected{{ end }}>Отмена</option>
           </select>
         </label>
         <label>Пользователь
@@ -63,9 +57,6 @@
             <option value="">Все пользователи</option>
             {{ range .Actors }}<option value="{{ .ID }}" {{ if eq $.Filters.ActorID .ID }}selected{{ end }}>{{ .FullName }}</option>{{ end }}
           </select>
-        </label>
-        <label>Документ №
-          <input type="number" name="document_id" min="1" value="{{ if .Filters.DocumentID }}{{ .Filters.DocumentID }}{{ end }}">
         </label>
         <label>С даты<input type="date" name="date_from" value="{{ .Filters.DateFrom }}"></label>
         <label>По дату<input type="date" name="date_to" value="{{ .Filters.DateTo }}"></label>

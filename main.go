@@ -212,67 +212,6 @@ func (app *application) migrate(ctx context.Context) error {
 		CREATE INDEX IF NOT EXISTS sessions_user_id_idx ON sessions(user_id);
 		CREATE INDEX IF NOT EXISTS sessions_expires_at_idx ON sessions(expires_at);
 
-		CREATE TABLE IF NOT EXISTS documents (
-			id BIGSERIAL PRIMARY KEY,
-			title TEXT NOT NULL,
-			description TEXT NOT NULL DEFAULT '',
-			status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'in_review', 'approved', 'rejected')),
-			current_version INTEGER NOT NULL DEFAULT 0,
-			created_by BIGINT NOT NULL REFERENCES users(id),
-			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-		);
-
-		CREATE TABLE IF NOT EXISTS document_versions (
-			id BIGSERIAL PRIMARY KEY,
-			document_id BIGINT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
-			version_no INTEGER NOT NULL CHECK (version_no > 0),
-			object_key TEXT NOT NULL UNIQUE,
-			s3_version_id TEXT,
-			original_filename TEXT NOT NULL,
-			content_type TEXT NOT NULL,
-			size_bytes BIGINT NOT NULL CHECK (size_bytes > 0),
-			uploaded_by BIGINT NOT NULL REFERENCES users(id),
-			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-			UNIQUE (document_id, version_no)
-		);
-
-		CREATE INDEX IF NOT EXISTS documents_updated_at_idx ON documents(updated_at DESC);
-		CREATE INDEX IF NOT EXISTS document_versions_document_id_idx ON document_versions(document_id, version_no DESC);
-
-		CREATE TABLE IF NOT EXISTS approval_rounds (
-			id BIGSERIAL PRIMARY KEY,
-			document_id BIGINT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
-			version_no INTEGER NOT NULL,
-			status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'completed', 'cancelled')),
-			started_by BIGINT NOT NULL REFERENCES users(id),
-			deadline DATE,
-			final_outcome TEXT CHECK (final_outcome IS NULL OR final_outcome IN ('approved', 'rejected')),
-			final_comment TEXT NOT NULL DEFAULT '',
-			started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-			completed_at TIMESTAMPTZ,
-			FOREIGN KEY (document_id, version_no) REFERENCES document_versions(document_id, version_no)
-		);
-
-		CREATE UNIQUE INDEX IF NOT EXISTS approval_rounds_one_active_idx
-			ON approval_rounds(document_id) WHERE status = 'active';
-		CREATE INDEX IF NOT EXISTS approval_rounds_document_idx
-			ON approval_rounds(document_id, started_at DESC);
-
-		CREATE TABLE IF NOT EXISTS approval_participants (
-			id BIGSERIAL PRIMARY KEY,
-			round_id BIGINT NOT NULL REFERENCES approval_rounds(id) ON DELETE CASCADE,
-			user_id BIGINT NOT NULL REFERENCES users(id),
-			role_snapshot TEXT NOT NULL CHECK (role_snapshot IN ('committee', 'approver')),
-			decision TEXT CHECK (decision IS NULL OR decision IN ('approve', 'approve_with_comments', 'reject', 'abstain')),
-			comment TEXT NOT NULL DEFAULT '',
-			responded_at TIMESTAMPTZ,
-			UNIQUE (round_id, user_id)
-		);
-
-		CREATE INDEX IF NOT EXISTS approval_participants_user_idx
-			ON approval_participants(user_id, round_id);
-
 		CREATE TABLE IF NOT EXISTS questions (
 			id BIGSERIAL PRIMARY KEY,
 			question_type TEXT NOT NULL CHECK (question_type IN (
@@ -629,19 +568,16 @@ func (app *application) migrate(ctx context.Context) error {
 			target_type TEXT NOT NULL DEFAULT '',
 			target_id BIGINT,
 			target_label TEXT NOT NULL DEFAULT '',
-			document_id BIGINT,
+			question_id BIGINT,
 			version_no INTEGER,
 			details TEXT NOT NULL DEFAULT '',
 			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 		);
 		ALTER TABLE audit_events ADD COLUMN IF NOT EXISTS question_id BIGINT;
-
 		CREATE INDEX IF NOT EXISTS audit_events_created_at_idx
 			ON audit_events(created_at DESC, id DESC);
 		CREATE INDEX IF NOT EXISTS audit_events_actor_idx
 			ON audit_events(actor_user_id, created_at DESC);
-		CREATE INDEX IF NOT EXISTS audit_events_document_idx
-			ON audit_events(document_id, created_at DESC) WHERE document_id IS NOT NULL;
 		CREATE INDEX IF NOT EXISTS audit_events_question_idx
 			ON audit_events(question_id, created_at DESC) WHERE question_id IS NOT NULL;
 
@@ -862,15 +798,11 @@ func (app *application) requireUser() gin.HandlerFunc {
 			return
 		}
 		c.Set("user", usr)
-		if strings.HasPrefix(c.FullPath(), "/questions/:id") || strings.HasPrefix(c.FullPath(), "/documents/:id") {
-			table := "questions"
-			if strings.HasPrefix(c.FullPath(), "/documents/") {
-				table = "documents"
-			}
+		if strings.HasPrefix(c.FullPath(), "/questions/:id") {
 			id, parseErr := strconv.ParseInt(c.Param("id"), 10, 64)
 			if parseErr == nil {
 				var archived bool
-				err := app.db.QueryRow(c.Request.Context(), "SELECT archived_at IS NOT NULL FROM "+table+" WHERE id=$1", id).Scan(&archived)
+				err := app.db.QueryRow(c.Request.Context(), "SELECT archived_at IS NOT NULL FROM questions WHERE id=$1", id).Scan(&archived)
 				if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 					respondMessage(c, 500, "Не удалось проверить архив")
 					c.Abort()
